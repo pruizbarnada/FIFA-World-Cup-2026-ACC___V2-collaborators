@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World Cup 2026 Admin</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f5f7;
+      --card: #ffffff;
+      --text: #18212b;
+      --muted: #617183;
+      --line: #d9e0e7;
+      --accent: #0b6d53;
+      --accent-dark: #084f3d;
+      --danger: #b42318;
+      --warn: #b3760f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(180deg, #eef4f1 0%, var(--bg) 220px);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(24, 33, 43, 0.08);
+      margin-bottom: 18px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    h1 { margin: 0; font-size: 32px; }
+    h2 { margin: 0 0 12px; font-size: 18px; }
+    p  { color: var(--muted); margin: 8px 0 0; }
+
+    form { display: grid; gap: 12px; max-width: 420px; }
+
+    input, button, textarea {
+      font: inherit;
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+
+    input, textarea { border: 1px solid var(--line); width: 100%; }
+    textarea { min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+
+    button {
+      border: 0;
+      background: var(--accent);
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent-dark); }
+    button.secondary { background: #dfe8e4; color: var(--text); }
+    button.secondary:hover { background: #cad9d2; }
+    button.danger { background: var(--danger); }
+    button.danger:hover { background: #8b1812; }
+
+    .logout-btn { background: #dfe8e4; color: var(--text); }
+    .error { color: var(--danger); margin-top: 8px; }
+    .warn  { color: var(--warn);   margin-top: 8px; font-size: 13px; }
+    .ok    { color: var(--accent); margin-top: 8px; font-size: 13px; }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .meta-item {
+      background: #f8fafb;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .meta-label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .meta-value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+
+    .results-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+    th { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      background: #f8fafb;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      max-width: 100%;
+    }
+
+    @media (max-width: 760px) {
+      .header { flex-direction: column; align-items: flex-start; }
+      table, thead, tbody, tr, td, th { display: block; }
+      thead { display: none; }
+      tr { border-bottom: 1px solid var(--line); padding: 12px 0; }
+      td { border: 0; padding: 8px 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div>
+        <h1>Admin dashboard</h1>
+        <p>Review submissions and record official match results.</p>
+      </div>
+      {% if is_authenticated %}
+      <form method="post" action="{{ url_for('admin_logout') }}">
+        <button type="submit" class="logout-btn">Log out</button>
+      </form>
+      {% endif %}
+    </div>
+
+    {% if not is_authenticated %}
+    <div class="card">
+      <form method="post">
+        <label for="password">Admin password</label>
+        <input id="password" name="password" type="password" required autocomplete="current-password">
+        <button type="submit">Open dashboard</button>
+      </form>
+      {% if error %}
+      <div class="error">{{ error }}</div>
+      {% endif %}
+    </div>
+    {% else %}
+
+    <div class="card">
+      <h2>Official results</h2>
+      <div class="meta">
+        <div class="meta-item">
+          <div class="meta-label">Status</div>
+          <div class="meta-value">{{ 'Recorded' if results_meta.has_results else 'Not set' }}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">Last updated</div>
+          <div class="meta-value" style="font-size:16px;">{{ results_meta.updated_at or '—' }}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">Auto-fetch</div>
+          <div class="meta-value" style="font-size:16px;">{{ 'football-data.org (token set)' if football_data_token_configured else 'Manual only' }}</div>
+        </div>
+      </div>
+
+      <div class="results-actions">
+        <button id="refreshBtn" type="button"{% if not football_data_token_configured %} disabled title="Set FOOTBALL_DATA_TOKEN to enable"{% endif %}>↻ Refresh from football-data.org</button>
+        <button id="saveResultsBtn" type="button" class="secondary">Save manual JSON</button>
+        <button id="clearResultsBtn" type="button" class="danger">Clear results</button>
+      </div>
+      <div id="resultsStatus"></div>
+
+      <textarea id="resultsJson" placeholder='{"groups":{"A":{"first":"Mexico","second":"Czechia","third":"South Korea"}}, "thirds_advancing":["South Korea"], "ko":{"r32":{"0":{"winner":"Mexico","homeScore":2,"awayScore":1}}}}'>{{ results_json }}</textarea>
+      <p class="warn">Results JSON must match the picks structure: <code>groups</code>, <code>thirds_advancing</code>, <code>ko</code>. Saving recalculates every player's score.</p>
+    </div>
+
+    <div class="card">
+      <h2>Submissions</h2>
+      <div class="meta">
+        <div class="meta-item">
+          <div class="meta-label">Submissions</div>
+          <div class="meta-value">{{ submissions|length }}</div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Score</th>
+            <th>Last updated</th>
+            <th>Picks JSON</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for submission in submissions %}
+          <tr>
+            <td>{{ submission.name }}</td>
+            <td>{{ submission.email }}</td>
+            <td>{{ submission.score }}</td>
+            <td>{{ submission.updated_at }}</td>
+            <td><pre>{{ submission.picks | tojson(indent=2) }}</pre></td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5">No submissions yet.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if is_authenticated %}
+  <script>
+    const statusEl = document.getElementById('resultsStatus');
+    const textarea = document.getElementById('resultsJson');
+
+    function showStatus(msg, kind) {
+      statusEl.className = kind || 'ok';
+      statusEl.textContent = msg;
+    }
+
+    async function postJson(url, body) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : null,
+      });
+      return { status: res.status, data: await res.json().catch(() => ({})) };
+    }
+
+    document.getElementById('refreshBtn')?.addEventListener('click', async () => {
+      showStatus('Fetching from football-data.org…', 'warn');
+      const { status, data } = await postJson('/admin/results/refresh');
+      if (status === 200 && data.ok) {
+        textarea.value = JSON.stringify(data.results, null, 2);
+        showStatus(`Refreshed — recalculated ${data.recalculated} submission(s).`, 'ok');
+      } else {
+        showStatus(data.error || 'Refresh failed.', 'error');
+      }
+    });
+
+    document.getElementById('saveResultsBtn').addEventListener('click', async () => {
+      showStatus('Saving…', 'warn');
+      const { status, data } = await postJson('/admin/results', { raw: textarea.value });
+      if (status === 200 && data.ok) {
+        showStatus(`Saved — recalculated ${data.recalculated} submission(s).`, 'ok');
+      } else {
+        showStatus(data.error || 'Save failed.', 'error');
+      }
+    });
+
+    document.getElementById('clearResultsBtn').addEventListener('click', async () => {
+      if (!confirm('Clear all official results? Every player score will reset to 0.')) return;
+      showStatus('Clearing…', 'warn');
+      const { status, data } = await postJson('/admin/results/clear');
+      if (status === 200 && data.ok) {
+        textarea.value = '';
+        showStatus(`Cleared — recalculated ${data.recalculated} submission(s).`, 'ok');
+      } else {
+        showStatus(data.error || 'Clear failed.', 'error');
+      }
+    });
+  </script>
+  {% endif %}
+</body>
+</html>

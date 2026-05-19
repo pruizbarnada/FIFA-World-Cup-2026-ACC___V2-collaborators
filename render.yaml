@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: world-cup-2026-acc
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: waitress-serve --host=0.0.0.0 --port=$PORT app:app
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.3
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DB_PATH
+        value: /var/data/predictions.db
+    disks:
+      - name: predictions-data
+        mountPath: /var/data
+        sizeGB: 1
