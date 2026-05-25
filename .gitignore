@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Local database (production uses a separate persistent disk on Render)
+data/
+
+# Local env / secrets
+.env
+.env.*
+allowed_emails.txt
+
+# Editors
+.vscode/
+.idea/
+*.swp

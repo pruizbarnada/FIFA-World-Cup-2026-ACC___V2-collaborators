@@ -7,6 +7,7 @@ from pathlib import Path
 _TEST_DB_DIR = tempfile.TemporaryDirectory()
 os.environ["DB_PATH"] = str(Path(_TEST_DB_DIR.name) / "predictions.db")
 os.environ["SECRET_KEY"] = "test-secret"
+os.environ["ALLOWED_EMAILS_PATH"] = str(Path(_TEST_DB_DIR.name) / "allowed_emails.txt")
 
 import app as app_module  # noqa: E402
 
@@ -51,10 +52,11 @@ class ScoringTests(unittest.TestCase):
             "thirds_advancing": ["Brazil", "Spain", "Germany", "Argentina"],
         }
 
-        # Brazil at idx 0 exact = 3. Germany advances but not at idx 1 = 1.
+        # Brazil at idx 0 exact = 1 (advance) + 1 (exact) = 2.
+        # Germany advances but not at idx 1 = 1.
         # Spain advances but not at idx 2 (Spain is idx 1 in actual) = 1.
         # Argentina advances but not at idx 6 = 1.
-        self.assertEqual(app_module.calculate_score(picks, results), 6)
+        self.assertEqual(app_module.calculate_score(picks, results), 5)
 
     def test_ko_winner_and_score_bonus(self):
         picks = {
@@ -73,8 +75,8 @@ class ScoringTests(unittest.TestCase):
                 }
             }
         }
-        # Mexico winner (3) + correct score bonus (2) + Brazil winner (3) = 8
-        self.assertEqual(app_module.calculate_score(picks, results), 8)
+        # Mexico winner (3) + correct score bonus (5) + Brazil winner (3) = 11
+        self.assertEqual(app_module.calculate_score(picks, results), 11)
 
     def test_ko_wrong_winner_no_points(self):
         picks = {"ko": {"r32": {"0": {"winner": "Mexico", "homeScore": 2, "awayScore": 1}}}}
@@ -220,6 +222,74 @@ class SavePicksTests(unittest.TestCase):
         self.assertEqual(response.get_json()["score"], 0)
 
 
+class PicksLockTests(unittest.TestCase):
+    def setUp(self):
+        app_module.app.config.update(TESTING=True)
+        if app_module.DB_PATH.exists():
+            app_module.DB_PATH.unlink()
+        app_module.init_db()
+        self.client = app_module.app.test_client()
+        self._orig_lock_at = app_module.PICKS_LOCK_AT
+
+    def tearDown(self):
+        app_module.PICKS_LOCK_AT = self._orig_lock_at
+
+    def _set_lock(self, iso: str) -> None:
+        app_module.PICKS_LOCK_AT = iso
+
+    def test_save_before_lock_accepts_group_picks(self):
+        self._set_lock("2999-01-01T00:00:00+00:00")
+        resp = self.client.post(
+            "/api/save",
+            json={
+                "email": "till@example.com",
+                "name": "Till",
+                "picks": {"groups": {"A": {"first": "Mexico"}}, "thirds_ranking": ["Mexico"]},
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.get_json()["locked"])
+
+    def test_save_after_lock_preserves_stored_groups_and_thirds(self):
+        # Submit before the deadline with real group + thirds data.
+        self._set_lock("2999-01-01T00:00:00+00:00")
+        self.client.post(
+            "/api/save",
+            json={
+                "email": "till@example.com",
+                "name": "Till",
+                "picks": {
+                    "groups": {"A": {"first": "Mexico"}},
+                    "thirds_ranking": ["Mexico"],
+                    "ko": {"r32": {"0": {"winner": "Mexico"}}},
+                },
+            },
+        )
+
+        # After the deadline, an attempt to overwrite groups/thirds is ignored,
+        # but KO picks still update.
+        self._set_lock("2000-01-01T00:00:00+00:00")
+        resp = self.client.post(
+            "/api/save",
+            json={
+                "email": "till@example.com",
+                "name": "Till",
+                "picks": {
+                    "groups": {"A": {"first": "Brazil"}},
+                    "thirds_ranking": ["Brazil"],
+                    "ko": {"r32": {"0": {"winner": "Argentina"}}},
+                },
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json()["locked"])
+
+        stored = self.client.get("/api/picks/till@example.com").get_json()["picks"]
+        self.assertEqual(stored["groups"], {"A": {"first": "Mexico"}})
+        self.assertEqual(stored["thirds_ranking"], ["Mexico"])
+        self.assertEqual(stored["ko"]["r32"]["0"]["winner"], "Argentina")
+
+
 class PodiumScoringTests(unittest.TestCase):
     def test_podium_exact_match_scores_10_6_4(self):
         picks = {"podium": {"first": "Brazil", "second": "France", "third": "Argentina"}}
@@ -240,6 +310,21 @@ class PodiumScoringTests(unittest.TestCase):
     def test_podium_without_results_is_zero(self):
         picks = {"podium": {"first": "Brazil", "second": "France", "third": "Argentina"}}
         self.assertEqual(app_module.calculate_score(picks, {}), 0)
+
+    def test_fourth_place_scores_three_points(self):
+        picks = {
+            "podium": {"first": "Brazil", "second": "France", "third": "Argentina", "fourth": "Spain"}
+        }
+        results = {
+            "podium": {"first": "Brazil", "second": "France", "third": "Argentina", "fourth": "Spain"}
+        }
+        # 10 + 6 + 4 + 3
+        self.assertEqual(app_module.calculate_score(picks, results), 23)
+
+    def test_fourth_place_alone_scores_three(self):
+        picks = {"podium": {"first": "Mexico", "second": "Canada", "third": "USA", "fourth": "Spain"}}
+        results = {"podium": {"first": "Brazil", "second": "France", "third": "Argentina", "fourth": "Spain"}}
+        self.assertEqual(app_module.calculate_score(picks, results), 3)
 
 
 class TeamPickerTests(unittest.TestCase):

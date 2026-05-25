@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 import re
@@ -11,16 +13,25 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, session, url_for
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "data" / "predictions.db")))
+ALLOWED_EMAILS_PATH = Path(os.getenv("ALLOWED_EMAILS_PATH", str(BASE_DIR / "allowed_emails.txt")))
+
+ACCESS_DENIED_MESSAGE = (
+    "User not found - Please send the 5€ Bizum to be able to participate "
+    "in the prediction contest!"
+)
+
+# 12:00 noon Madrid time on 11 June 2026 (CEST = UTC+2)
+PICKS_LOCK_AT = os.getenv("PICKS_LOCK_AT", "2026-06-11T10:00:00+00:00").strip()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-this-secret-before-deploying")
 
 ROUND_POINTS: dict[str, int] = {"r32": 3, "r16": 5, "qf": 8, "sf": 12, "f": 20}
-SCORE_BONUS: dict[str, int] = {"r32": 2, "r16": 2, "qf": 2, "sf": 3, "f": 5}
+SCORE_BONUS: dict[str, int] = {"r32": 5, "r16": 5, "qf": 5, "sf": 5, "f": 5}
 MAX_MATCH_SCORE = 30
 KO_ROUND_IDS = ("r32", "r16", "qf", "sf", "f")
 GROUP_LETTERS = tuple("ABCDEFGHIJKL")
@@ -102,6 +113,57 @@ def init_db() -> None:
 
 def validate_email(email: str) -> bool:
     return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email))
+
+
+def load_allowed_emails() -> set[str]:
+    emails: set[str] = set()
+
+    def _ingest(text: str) -> None:
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            for token in line.split(","):
+                token = token.strip().lower()
+                if token:
+                    emails.add(token)
+
+    env_value = os.getenv("ALLOWED_EMAILS", "").strip()
+    if env_value:
+        _ingest(env_value)
+        return emails
+
+    try:
+        _ingest(ALLOWED_EMAILS_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        pass
+    return emails
+
+
+def picks_lock_dt() -> datetime | None:
+    try:
+        dt = datetime.fromisoformat(PICKS_LOCK_AT)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def picks_locked(now: datetime | None = None) -> bool:
+    dt = picks_lock_dt()
+    if dt is None:
+        return False
+    return (now or datetime.now(timezone.utc)) >= dt
+
+
+def is_email_allowed(email: str) -> bool:
+    allowed = load_allowed_emails()
+    # If no allowlist is configured, fall back to letting everyone in so a
+    # missing file can't accidentally lock all users out.
+    if not allowed:
+        return True
+    return email.strip().lower() in allowed
 
 
 def is_valid_match_score(value: Any) -> bool:
@@ -233,8 +295,8 @@ def calculate_score(picks: dict[str, Any], results: dict | None = None) -> int:
     return score
 
 
-# Tournament podium scoring (champion / runner-up / 3rd-place playoff winner)
-PODIUM_POINTS = {"first": 10, "second": 6, "third": 4}
+# Tournament podium scoring (champion / runner-up / 3rd-place playoff winner / loser)
+PODIUM_POINTS = {"first": 10, "second": 6, "third": 4, "fourth": 3}
 
 
 def _picks_podium(picks: dict[str, Any]) -> dict[str, Any]:
@@ -287,10 +349,10 @@ def _score_thirds(user: Any, actual: Any) -> int:
     for i, team in enumerate(user[:8]):
         if not isinstance(team, str) or not team:
             continue
-        if i < len(actual) and actual[i] == team:
-            score += 3
-        elif team in advanced:
+        if team in advanced:
             score += 1
+            if i < len(actual) and actual[i] == team:
+                score += 1
     return score
 
 
@@ -657,7 +719,7 @@ def fetch_team_last_match(team_name: str) -> dict | None:
 
 @app.get("/")
 def index() -> str:
-    return render_template("index.html")
+    return render_template("index.html", picks_lock_at=PICKS_LOCK_AT)
 
 
 @app.get("/health")
@@ -723,11 +785,96 @@ def admin_logout():
     return redirect(url_for("admin_dashboard"))
 
 
+KO_EXPORT_COUNTS = (("r32", 16), ("r16", 8), ("qf", 4), ("sf", 2), ("f", 1))
+
+
+def _build_submissions_csv() -> str:
+    header: list[str] = ["email", "name", "score", "updated_at"]
+    for slot in ("first", "second", "third", "fourth"):
+        header.append(f"podium_{slot}")
+    for letter in GROUP_LETTERS:
+        for pos in ("first", "second", "third"):
+            header.append(f"group_{letter}_{pos}")
+    for i in range(1, 13):
+        header.append(f"thirds_rank_{i}")
+    for round_id, count in KO_EXPORT_COUNTS:
+        for i in range(count):
+            header.append(f"{round_id}_M{i + 1}_winner")
+            header.append(f"{round_id}_M{i + 1}_score")
+
+    with db_connection() as conn:
+        rows = conn.execute(
+            "SELECT email, name, picks_json, score, updated_at FROM submissions "
+            "ORDER BY score DESC, updated_at ASC"
+        ).fetchall()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+
+    for row in rows:
+        try:
+            picks = json.loads(row["picks_json"])
+        except (TypeError, ValueError):
+            picks = {}
+        if not isinstance(picks, dict):
+            picks = {}
+
+        out = [row["email"], row["name"], row["score"], row["updated_at"]]
+
+        podium = picks.get("podium") if isinstance(picks.get("podium"), dict) else {}
+        for slot in ("first", "second", "third", "fourth"):
+            out.append(podium.get(slot) or "")
+
+        groups = picks.get("groups") if isinstance(picks.get("groups"), dict) else {}
+        for letter in GROUP_LETTERS:
+            gp = groups.get(letter) if isinstance(groups.get(letter), dict) else {}
+            for pos in ("first", "second", "third"):
+                out.append(gp.get(pos) or "")
+
+        thirds = picks.get("thirds_ranking") if isinstance(picks.get("thirds_ranking"), list) else []
+        for i in range(12):
+            out.append(thirds[i] if i < len(thirds) and isinstance(thirds[i], str) else "")
+
+        ko = picks.get("ko") if isinstance(picks.get("ko"), dict) else {}
+        for round_id, count in KO_EXPORT_COUNTS:
+            round_data = ko.get(round_id) if isinstance(ko.get(round_id), dict) else {}
+            for i in range(count):
+                match = round_data.get(str(i))
+                if not isinstance(match, dict):
+                    match = round_data.get(i) if isinstance(round_data.get(i), dict) else {}
+                out.append(match.get("winner") or "")
+                hs = match.get("homeScore")
+                aw = match.get("awayScore")
+                if is_valid_match_score(hs) and is_valid_match_score(aw):
+                    out.append(f"{hs}-{aw}")
+                else:
+                    out.append("")
+
+        writer.writerow(out)
+
+    return buf.getvalue()
+
+
+@app.get("/admin/export.csv")
+def admin_export_csv():
+    require_admin()
+    payload = _build_submissions_csv()
+    return Response(
+        payload,
+        mimetype="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="wc2026-submissions.csv"'},
+    )
+
+
 @app.get("/api/picks/<string:email>")
 def get_picks(email: str):
     email = email.strip().lower()
     if not email:
         return jsonify({"ok": False, "error": "Email required."}), 400
+
+    if not is_email_allowed(email):
+        return jsonify({"ok": False, "error": ACCESS_DENIED_MESSAGE}), 403
 
     with db_connection() as conn:
         row = conn.execute(
@@ -771,12 +918,35 @@ def save_picks():
 
     if not email or not validate_email(email):
         return jsonify({"ok": False, "error": "A valid email address is required."}), 400
+    if not is_email_allowed(email):
+        return jsonify({"ok": False, "error": ACCESS_DENIED_MESSAGE}), 403
     if not name:
         return jsonify({"ok": False, "error": "Name is required."}), 400
     if len(name) > 50:
         return jsonify({"ok": False, "error": "Name must be 50 characters or fewer."}), 400
     if not isinstance(picks, dict):
         return jsonify({"ok": False, "error": "Invalid picks payload."}), 400
+
+    locked = picks_locked()
+    if locked:
+        stored_groups: dict = {}
+        stored_thirds: list = []
+        with db_connection() as conn:
+            row = conn.execute(
+                "SELECT picks_json FROM submissions WHERE email = ?", (email,)
+            ).fetchone()
+        if row:
+            try:
+                existing = json.loads(row["picks_json"])
+            except (TypeError, ValueError):
+                existing = {}
+            if isinstance(existing, dict):
+                if isinstance(existing.get("groups"), dict):
+                    stored_groups = existing["groups"]
+                if isinstance(existing.get("thirds_ranking"), list):
+                    stored_thirds = existing["thirds_ranking"]
+        picks["groups"] = stored_groups
+        picks["thirds_ranking"] = stored_thirds
 
     score = calculate_score(picks, get_results())
     timestamp = utc_now_iso()
@@ -795,7 +965,7 @@ def save_picks():
             (email, name, json.dumps(picks), score, timestamp),
         )
 
-    return jsonify({"ok": True, "score": score})
+    return jsonify({"ok": True, "score": score, "locked": locked})
 
 
 @app.get("/api/results")

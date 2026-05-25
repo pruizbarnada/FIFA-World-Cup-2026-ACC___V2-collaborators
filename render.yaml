@@ -11,6 +11,8 @@ services:
         value: 3.13.3
       - key: ADMIN_PASSWORD
         sync: false
+      - key: ALLOWED_EMAILS
+        sync: false
       - key: SECRET_KEY
         generateValue: true
       - key: DB_PATH

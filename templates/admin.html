@@ -187,6 +187,11 @@
           <div class="meta-value">{{ submissions|length }}</div>
         </div>
       </div>
+      <div class="results-actions">
+        <a href="{{ url_for('admin_export_csv') }}" download>
+          <button type="button">⬇ Download all as CSV</button>
+        </a>
+      </div>
 
       <table>
         <thead>

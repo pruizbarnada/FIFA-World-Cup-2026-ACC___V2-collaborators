@@ -102,7 +102,7 @@ function formatKickoff(iso) {
 let currentMode = '';
 let playerEmail = '';
 let playerName  = '';
-let picks = { groups:{}, thirds_ranking:[], ko:{}, podium:{first:null,second:null,third:null} };
+let picks = { groups:{}, thirds_ranking:[], ko:{}, podium:{first:null,second:null,third:null,fourth:null} };
 let wizardIdx = 0;
 let koCursor = { r32: 0, r16: 0, qf: 0, sf: 0, f: 0 };
 let lastChampionRequested = '';
@@ -116,6 +116,7 @@ function buildWizardSteps() {
     { kind:'podium', slot:'first',  title:'Pick your champion', sub:'Who lifts the trophy?' },
     { kind:'podium', slot:'second', title:'Pick the runner-up', sub:'Who finishes second — i.e. who loses the final?' },
     { kind:'podium', slot:'third',  title:'Pick the 3rd place', sub:'Who wins the bronze game between the semi-final losers?' },
+    { kind:'podium', slot:'fourth', title:'Pick the 4th place', sub:'Who loses the bronze game between the semi-final losers?' },
   ];
   GROUPS.forEach(g => {
     steps.push({ kind:'group', group:g.name, title:`Group ${g.name}`, sub:'Tap a team to cycle 1st → 2nd → 3rd → clear.' });
@@ -150,6 +151,50 @@ function polyfillEmoji() {
   });
 }
 
+// ── Lock countdown ───────────────────────────────────────────────────────────
+function picksLockTime() {
+  const raw = window.PICKS_LOCK_AT;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function isPicksLocked() {
+  const d = picksLockTime();
+  return d ? Date.now() >= d.getTime() : false;
+}
+
+function buildLockBannerHTML() {
+  const d = picksLockTime();
+  if (!d) return '';
+  const now = Date.now();
+  if (now >= d.getTime()) {
+    return '<span class="lock-banner-icon">🔒</span>Predictions for this section are now locked.';
+  }
+  const totalMin = Math.floor((d.getTime() - now) / 60000);
+  const days = Math.floor(totalMin / (60 * 24));
+  const hours = Math.floor((totalMin % (60 * 24)) / 60);
+  const minutes = totalMin % 60;
+  return (
+    '<span class="lock-banner-icon">⏰</span>' +
+    'Your predictions will be locked at 12pm on June 11th. ' +
+    `Time remaining: <strong>${days}d ${hours}h ${minutes}m</strong>`
+  );
+}
+
+function updateLockBanners() {
+  const locked = isPicksLocked();
+  const html = buildLockBannerHTML();
+  document.querySelectorAll('[data-lock-banner]').forEach(el => {
+    el.innerHTML = html;
+    el.classList.toggle('locked', locked);
+    el.classList.toggle('live', !locked && Boolean(html));
+  });
+  document.body.classList.toggle('picks-locked', locked);
+}
+
+setInterval(updateLockBanners, 60 * 1000);
+
 function showMessage(text, isError = false) {
   const el = qs(currentMode === 'simple' ? 'simpleSavedPill' : 'savedPill') || qs('savedPill');
   if (!el) return;
@@ -165,7 +210,7 @@ function normalizePicks() {
   if (!Array.isArray(picks.thirds_ranking)) picks.thirds_ranking = [];
   if (!picks.ko || typeof picks.ko !== 'object') picks.ko = {};
   if (!picks.podium || typeof picks.podium !== 'object') picks.podium = {};
-  for (const slot of ['first','second','third']) {
+  for (const slot of ['first','second','third','fourth']) {
     if (typeof picks.podium[slot] !== 'string') picks.podium[slot] = null;
   }
 
@@ -204,8 +249,16 @@ async function submitIdentity() {
 
   try {
     const res  = await fetch(`/api/picks/${encodeURIComponent(playerEmail)}`);
-    const data = await res.json();
-    if (data.ok && data.picks) {
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 403 || (data && data.ok === false)) {
+      errEl.textContent = (data && data.error) ||
+        'User not found - Please send the 5€ Bizum to be able to participate in the prediction contest!';
+      playerEmail = '';
+      playerName  = '';
+      qs('emailInput').focus();
+      return;
+    }
+    if (data && data.ok && data.picks) {
       picks = data.picks;
       if (data.name) playerName = data.name;
       qs('nameInput').value = playerName;
@@ -266,10 +319,12 @@ function stepIsComplete(step) {
   if (step.kind === 'podium') return Boolean(picks.podium && picks.podium[step.slot]);
   if (step.kind === 'champion') return Boolean(picks.podium && picks.podium.first);
   if (step.kind === 'group') {
+    if (isPicksLocked()) return true;
     const g = picks.groups[step.group] || {};
     return Boolean(g.first && g.second && g.third);
   }
   if (step.kind === 'thirds') {
+    if (isPicksLocked()) return true;
     const thirdsPicked = GROUPS.filter(g => (picks.groups[g.name] || {}).third).length;
     return thirdsPicked === 12 && (picks.thirds_ranking || []).length >= 12;
   }
@@ -295,6 +350,7 @@ function showTab(id, btn) {
   if (id === 'leaderboard') renderLeaderboard();
   if (id === 'thirds')      renderThirdsRanking();
   if (id === 'ko')          renderKO();
+  updateLockBanners();
 }
 
 // ── Groups ────────────────────────────────────────────────────────────────────
@@ -309,22 +365,24 @@ function renderGroups() {
 function renderPodiumPicker() {
   const container = qs('podiumPicker');
   if (!container) return;
-  if (!picks.podium) picks.podium = { first:null, second:null, third:null };
+  if (!picks.podium) picks.podium = { first:null, second:null, third:null, fourth:null };
 
   const sortedTeams = allTeams().slice().sort();
   const slots = [
     { key:'first',  label:'🥇 Champion (10 pts)' },
     { key:'second', label:'🥈 Runner-up (6 pts)' },
     { key:'third',  label:'🥉 3rd place (4 pts)' },
+    { key:'fourth', label:'4️⃣ 4th place (3 pts)' },
   ];
 
   container.innerHTML = '';
   slots.forEach(slot => {
     const currentTeam = picks.podium[slot.key];
-    const usedElsewhere = slots
-      .filter(s => s.key !== slot.key)
-      .map(s => picks.podium[s.key])
-      .filter(Boolean);
+    const usedElsewhere = new Set(
+      slots.filter(s => s.key !== slot.key)
+           .map(s => picks.podium[s.key])
+           .filter(Boolean)
+    );
 
     const row = document.createElement('div');
     row.className = 'podium-row';
@@ -332,38 +390,66 @@ function renderPodiumPicker() {
     const label = document.createElement('label');
     label.className = 'podium-label';
     label.textContent = slot.label;
-
-    const select = document.createElement('select');
-    select.className = 'podium-select';
-    const empty = document.createElement('option');
-    empty.value = '';
-    empty.textContent = '— choose country —';
-    select.appendChild(empty);
-    sortedTeams.forEach(team => {
-      const opt = document.createElement('option');
-      opt.value = team;
-      opt.textContent = `${FLAG[team] || ''} ${team}`;
-      opt.disabled = usedElsewhere.includes(team);
-      select.appendChild(opt);
-    });
-    select.value = currentTeam || '';
-
-    const display = document.createElement('span');
-    display.className = 'podium-flag';
-    display.innerHTML = currentTeam ? (FLAG[currentTeam] || '🏳️') : '';
-
-    select.addEventListener('change', () => {
-      picks.podium[slot.key] = select.value || null;
-      if (slot.key === 'first') {
-        picks.champion = picks.podium.first;
-        refreshChampionCard('manualChampionCard');
-      }
-      renderPodiumPicker();
-    });
-
     row.appendChild(label);
-    row.appendChild(select);
-    row.appendChild(display);
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'podium-dropdown';
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'podium-dropdown-toggle';
+    toggle.innerHTML = currentTeam
+      ? `<span class="podium-toggle-flag">${FLAG[currentTeam] || '🏳️'}</span>` +
+        `<span class="podium-toggle-name">${currentTeam}</span>` +
+        `<span class="podium-toggle-arrow">▾</span>`
+      : `<span class="podium-toggle-name placeholder">— choose country —</span>` +
+        `<span class="podium-toggle-arrow">▾</span>`;
+
+    const menu = document.createElement('div');
+    menu.className = 'podium-dropdown-menu';
+    menu.hidden = true;
+
+    sortedTeams.forEach(team => {
+      const isUsed = usedElsewhere.has(team) && team !== currentTeam;
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'podium-dropdown-item' +
+        (isUsed ? ' disabled' : '') +
+        (team === currentTeam ? ' selected' : '');
+      item.disabled = isUsed;
+      item.innerHTML =
+        `<span class="podium-item-flag">${FLAG[team] || '🏳️'}</span>` +
+        `<span class="podium-item-name">${team}</span>`;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (isUsed) return;
+        picks.podium[slot.key] = team;
+        if (slot.key === 'first') {
+          picks.champion = team;
+          refreshChampionCard('manualChampionCard');
+        }
+        renderPodiumPicker();
+      });
+      menu.appendChild(item);
+    });
+
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.podium-dropdown-menu').forEach((m) => {
+        if (m !== menu) m.hidden = true;
+      });
+      menu.hidden = !menu.hidden;
+    });
+
+    dropdown.appendChild(toggle);
+    dropdown.appendChild(menu);
+    row.appendChild(dropdown);
+
+    const flag = document.createElement('span');
+    flag.className = 'podium-flag';
+    flag.innerHTML = currentTeam ? (FLAG[currentTeam] || '🏳️') : '';
+    row.appendChild(flag);
+
     container.appendChild(row);
   });
   polyfillEmoji();
@@ -396,6 +482,10 @@ function buildGroupCard(group) {
 }
 
 function cycleGroupPick(group, team) {
+  if (isPicksLocked()) {
+    showMessage('Group predictions are locked.', true);
+    return;
+  }
   if (!picks.groups[group]) picks.groups[group] = {};
   const g = picks.groups[group];
 
@@ -531,6 +621,10 @@ function onThirdDragLeave() {
 function onThirdDrop(e) {
   e.preventDefault();
   this.classList.remove('drag-over');
+  if (isPicksLocked()) {
+    showMessage('3rd-place order is locked.', true);
+    return;
+  }
   const targetIdx = parseInt(this.dataset.dragIdx);
   if (dragSourceIdx === null || Number.isNaN(targetIdx) || dragSourceIdx === targetIdx) return;
   const list = picks.thirds_ranking;
@@ -548,6 +642,10 @@ function onThirdDragEnd() {
 }
 
 function moveThird(idx, dir) {
+  if (isPicksLocked()) {
+    showMessage('3rd-place order is locked.', true);
+    return;
+  }
   const t = picks.thirds_ranking;
   const n = idx + dir;
   if (n < 0 || n >= t.length) return;
@@ -795,6 +893,13 @@ function renderWizard() {
   helper.textContent = step.sub || '';
   body.appendChild(helper);
 
+  if (step.kind === 'group' || step.kind === 'thirds') {
+    const lockEl = document.createElement('div');
+    lockEl.className = 'lock-banner';
+    lockEl.setAttribute('data-lock-banner', '');
+    body.appendChild(lockEl);
+  }
+
   if (step.kind === 'podium')       renderWizardPodium(body, step.slot);
   else if (step.kind === 'champion')renderWizardPodium(body, 'first');
   else if (step.kind === 'group')   renderWizardGroup(body, step.group);
@@ -802,17 +907,18 @@ function renderWizard() {
   else if (step.kind === 'ko')      renderWizardKoRound(body, step.round);
   else if (step.kind === 'review')  renderWizardReview(body);
 
+  updateLockBanners();
   polyfillEmoji();
 }
 
-const PODIUM_LABEL = { first: 'champion', second: 'runner-up', third: '3rd place' };
+const PODIUM_LABEL = { first: 'champion', second: 'runner-up', third: '3rd place', fourth: '4th place' };
 
 function renderWizardPodium(body, slot) {
   const grid = document.createElement('div');
   grid.className = 'champion-grid';
   const current = (picks.podium && picks.podium[slot]) || null;
   const usedElsewhere = new Set(
-    ['first','second','third']
+    ['first','second','third','fourth']
       .filter(s => s !== slot)
       .map(s => picks.podium && picks.podium[s])
       .filter(Boolean)
@@ -980,6 +1086,7 @@ function renderWizardReview(body) {
       ${podiumRow('first', '🥇 Champion')}
       ${podiumRow('second', '🥈 Runner-up')}
       ${podiumRow('third', '🥉 3rd place')}
+      ${podiumRow('fourth', '4️⃣ 4th place')}
     </div>
   `);
 
@@ -1240,6 +1347,12 @@ function init() {
   setTimeout(polyfillEmoji, 200);
   setTimeout(polyfillEmoji, 1000);
   window.addEventListener('load', polyfillEmoji);
+
+  updateLockBanners();
+
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.podium-dropdown-menu').forEach(m => { m.hidden = true; });
+  });
 }
 
 init();
