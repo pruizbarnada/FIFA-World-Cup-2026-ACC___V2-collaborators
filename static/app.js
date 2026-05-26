@@ -19,38 +19,40 @@ const FLAG = {};
 GROUPS.forEach(g => g.teams.forEach(([f, n]) => { FLAG[n] = f; }));
 
 // R32 entries are listed in bracket-tree order (top → bottom of the bracket),
-// so the sequential R16_PAIRS [[0,1],[2,3],…] produce the official FIFA pairings.
+// so the sequential R16_PAIRS [[0,1],[2,3],…] produce the official FIFA pairings:
+// R16 M89=W74·W77, M90=W73·W75, M93=W83·W84, M94=W81·W82,
+//     M91=W76·W78, M92=W79·W80, M95=W86·W88, M96=W85·W87.
 // Comments show the official match number (M73–M88) and venue.
 const R32 = [
-  // M73 — SoFi Stadium, Inglewood
-  { home:{type:'group',group:'A',pos:2}, away:{type:'group',group:'B',pos:2} },
-  // M74 — Gillette Stadium, Foxborough
+  // M74 — Gillette Stadium, Foxborough  (top of R16 M89)
   { home:{type:'group',group:'E',pos:1}, away:{type:'third',rank:1}          },
+  // M77 — MetLife Stadium, East Rutherford
+  { home:{type:'group',group:'I',pos:1}, away:{type:'third',rank:2}          },
+  // M73 — SoFi Stadium, Inglewood  (top of R16 M90)
+  { home:{type:'group',group:'A',pos:2}, away:{type:'group',group:'B',pos:2} },
   // M75 — Estadio BBVA, Guadalupe
   { home:{type:'group',group:'F',pos:1}, away:{type:'group',group:'C',pos:2} },
-  // M76 — NRG Stadium, Houston
-  { home:{type:'group',group:'C',pos:1}, away:{type:'group',group:'F',pos:2} },
-  // M83 — BMO Field, Toronto
+  // M83 — BMO Field, Toronto  (top of R16 M93)
   { home:{type:'group',group:'K',pos:2}, away:{type:'group',group:'L',pos:2} },
   // M84 — SoFi Stadium, Inglewood
   { home:{type:'group',group:'H',pos:1}, away:{type:'group',group:'J',pos:2} },
-  // M81 — Levi's Stadium, Santa Clara
+  // M81 — Levi's Stadium, Santa Clara  (top of R16 M94)
   { home:{type:'group',group:'D',pos:1}, away:{type:'third',rank:6}          },
   // M82 — Lumen Field, Seattle
   { home:{type:'group',group:'G',pos:1}, away:{type:'third',rank:5}          },
-  // M77 — MetLife Stadium, East Rutherford
-  { home:{type:'group',group:'I',pos:1}, away:{type:'third',rank:2}          },
+  // M76 — NRG Stadium, Houston  (top of R16 M91)
+  { home:{type:'group',group:'C',pos:1}, away:{type:'group',group:'F',pos:2} },
   // M78 — AT&T Stadium, Arlington
   { home:{type:'group',group:'E',pos:2}, away:{type:'group',group:'I',pos:2} },
-  // M79 — Estadio Azteca, Mexico City
+  // M79 — Estadio Azteca, Mexico City  (top of R16 M92)
   { home:{type:'group',group:'A',pos:1}, away:{type:'third',rank:3}          },
   // M80 — Mercedes-Benz Stadium, Atlanta
   { home:{type:'group',group:'L',pos:1}, away:{type:'third',rank:4}          },
-  // M86 — Hard Rock Stadium, Miami Gardens
+  // M86 — Hard Rock Stadium, Miami Gardens  (top of R16 M95)
   { home:{type:'group',group:'J',pos:1}, away:{type:'group',group:'H',pos:2} },
   // M88 — AT&T Stadium, Arlington
   { home:{type:'group',group:'D',pos:2}, away:{type:'group',group:'G',pos:2} },
-  // M85 — BC Place, Vancouver
+  // M85 — BC Place, Vancouver  (top of R16 M96)
   { home:{type:'group',group:'B',pos:1}, away:{type:'third',rank:7}          },
   // M87 — Arrowhead Stadium, Kansas City
   { home:{type:'group',group:'K',pos:1}, away:{type:'third',rank:8}          },
@@ -78,15 +80,15 @@ const ROUND_LABELS = { r32:'Round of 32', r16:'Round of 16', qf:'Quarter-finals'
 // pairings above. Used to gate picks until 72h before each match.
 const KO_KICKOFFS = {
   r32: [
-    '2026-06-28T19:00:00Z', // M73 — A2 vs B2
     '2026-06-29T20:30:00Z', // M74 — E1 vs 3rd #1
+    '2026-06-30T21:00:00Z', // M77 — I1 vs 3rd #2
+    '2026-06-28T19:00:00Z', // M73 — A2 vs B2
     '2026-06-30T01:00:00Z', // M75 — F1 vs C2
-    '2026-06-29T17:00:00Z', // M76 — C1 vs F2
     '2026-07-02T23:00:00Z', // M83 — K2 vs L2
     '2026-07-02T19:00:00Z', // M84 — H1 vs J2
     '2026-07-02T00:00:00Z', // M81 — D1 vs 3rd #6
     '2026-07-01T20:00:00Z', // M82 — G1 vs 3rd #5
-    '2026-06-30T21:00:00Z', // M77 — I1 vs 3rd #2
+    '2026-06-29T17:00:00Z', // M76 — C1 vs F2
     '2026-06-30T17:00:00Z', // M78 — E2 vs I2
     '2026-07-01T01:00:00Z', // M79 — A1 vs 3rd #3
     '2026-07-01T16:00:00Z', // M80 — L1 vs 3rd #4
@@ -96,11 +98,11 @@ const KO_KICKOFFS = {
     '2026-07-04T01:30:00Z', // M87 — K1 vs 3rd #8
   ],
   r16: [
-    '2026-07-04T21:00:00Z', // M89 — W M73 vs W M74
-    '2026-07-04T17:00:00Z', // M90 — W M75 vs W M76
+    '2026-07-04T21:00:00Z', // M89 — W M74 vs W M77
+    '2026-07-04T17:00:00Z', // M90 — W M73 vs W M75
     '2026-07-06T19:00:00Z', // M93 — W M83 vs W M84
     '2026-07-07T00:00:00Z', // M94 — W M81 vs W M82
-    '2026-07-05T20:00:00Z', // M91 — W M77 vs W M78
+    '2026-07-05T20:00:00Z', // M91 — W M76 vs W M78
     '2026-07-06T00:00:00Z', // M92 — W M79 vs W M80
     '2026-07-07T16:00:00Z', // M95 — W M86 vs W M88
     '2026-07-07T20:00:00Z', // M96 — W M85 vs W M87
@@ -120,14 +122,26 @@ const KO_KICKOFFS = {
   ],
 };
 const UNLOCK_HOURS_BEFORE = 72;
+const LOCK_MINUTES_BEFORE = 30;
 
 function koUnlockAt(round, idx) {
   const kickoffs = KO_KICKOFFS[round];
   if (!kickoffs || idx < 0 || idx >= kickoffs.length) return new Date(0);
   return new Date(new Date(kickoffs[idx]).getTime() - UNLOCK_HOURS_BEFORE * 3600 * 1000);
 }
+function koLockAt(round, idx) {
+  const kickoffs = KO_KICKOFFS[round];
+  if (!kickoffs || idx < 0 || idx >= kickoffs.length) return new Date(8.64e15);
+  return new Date(new Date(kickoffs[idx]).getTime() - LOCK_MINUTES_BEFORE * 60 * 1000);
+}
 function koIsUnlocked(round, idx) {
   return Date.now() >= koUnlockAt(round, idx).getTime();
+}
+function koIsClosed(round, idx) {
+  return Date.now() >= koLockAt(round, idx).getTime();
+}
+function koIsPickable(round, idx) {
+  return koIsUnlocked(round, idx) && !koIsClosed(round, idx);
 }
 function formatKickoff(iso) {
   try {
@@ -371,8 +385,9 @@ function stepIsComplete(step) {
     const roundDef = KO_ROUNDS.find(r => r.id === step.round);
     const round = picks.ko[step.round] || {};
     for (let i = 0; i < roundDef.count; i++) {
-      // All KO matches lock until 72h before kickoff — don't block the wizard on those.
-      if (!koIsUnlocked(step.round, i)) continue;
+      // Skip matches that haven't opened yet (>72h out) and ones that have
+      // already closed (<30min to kickoff) — neither is the user's fault.
+      if (!koIsPickable(step.round, i)) continue;
       if (!(round[i] && round[i].winner)) return false;
     }
     return true;
@@ -793,9 +808,11 @@ function buildKoMatchCard(roundId, matchIdx) {
   const homePicked = winner && winner === homeTeam;
   const awayPicked = winner && winner === awayTeam;
   const unlocked   = koIsUnlocked(roundId, matchIdx);
+  const closed     = koIsClosed(roundId, matchIdx);
+  const pickable   = unlocked && !closed;
 
   const matchup = document.createElement('div');
-  matchup.className = 'ko-matchup' + (unlocked ? '' : ' locked');
+  matchup.className = 'ko-matchup' + (pickable ? '' : ' locked');
 
   if (!unlocked) {
     const unlockISO = koUnlockAt(roundId, matchIdx).toISOString();
@@ -815,6 +832,25 @@ function buildKoMatchCard(roundId, matchIdx) {
 
   const homeTbd = !homeTeam;
   const awayTbd = !awayTeam;
+
+  if (closed) {
+    const kickoffISO = (KO_KICKOFFS[roundId] || [])[matchIdx];
+    const scoreText = (homeScore !== '' && awayScore !== '') ? `${homeScore} – ${awayScore}` : '— : —';
+    matchup.innerHTML = `
+      <div class="ko-team ${homePicked?'picked':''} ${homeTbd?'tbd':''} locked">
+        <span class="ko-flag">${homeFlag}</span>
+        <span class="ko-name">${homeLabel}</span>
+        ${homePicked?'<span class="ko-check">✓</span>':''}
+      </div>
+      <div class="ko-lock-banner">🔒 Picks closed · kickoff ${kickoffISO ? formatKickoff(kickoffISO) : 'soon'} · ${scoreText}</div>
+      <div class="ko-team ${awayPicked?'picked':''} ${awayTbd?'tbd':''} locked">
+        <span class="ko-flag">${awayFlag}</span>
+        <span class="ko-name">${awayLabel}</span>
+        ${awayPicked?'<span class="ko-check">✓</span>':''}
+      </div>
+    `;
+    return matchup;
+  }
 
   matchup.innerHTML = `
     <div class="ko-team ${homePicked?'picked':''} ${homeTbd?'tbd':''}"
@@ -862,6 +898,10 @@ function pickKOWinner(round, matchIdx, side) {
     showMessage(`Locked until ${formatKickoff(koUnlockAt(round, matchIdx).toISOString())}`, true);
     return;
   }
+  if (koIsClosed(round, matchIdx)) {
+    showMessage('Picks closed — match starts in less than 30 minutes', true);
+    return;
+  }
   const team = getTeam(round, matchIdx, side);
   if (!team) { showMessage('Complete the previous round first', true); return; }
 
@@ -896,6 +936,12 @@ function invalidateDownstream(round, matchIdx) {
 }
 
 function setKOScore(round, matchIdx, scoreType, value) {
+  if (!koIsPickable(round, matchIdx)) {
+    showMessage('Picks closed — match starts in less than 30 minutes', true);
+    if (currentMode === 'manual') renderKO();
+    if (currentMode === 'simple') renderWizard();
+    return;
+  }
   if (!picks.ko[round]) picks.ko[round] = {};
   if (!picks.ko[round][matchIdx]) picks.ko[round][matchIdx] = {};
   const val = value === '' ? null : parseInt(value, 10);
@@ -1044,15 +1090,24 @@ function renderWizardKoRound(body, roundId) {
 
   const kickoff = (KO_KICKOFFS[roundId] || [])[idx];
   const unlocked = koIsUnlocked(roundId, idx);
+  const closed = koIsClosed(roundId, idx);
+  const pickable = unlocked && !closed;
   const matchPicked = ((picks.ko[roundId] || {})[idx] || {}).winner;
+
+  let statusHtml;
+  if (!unlocked) {
+    statusHtml = `🔒 Opens ${formatKickoff(koUnlockAt(roundId, idx).toISOString())}`;
+  } else if (closed) {
+    statusHtml = '🔒 Picks closed (kickoff &lt;30 min)';
+  } else {
+    statusHtml = '🔓 Picks open';
+  }
 
   const meta = document.createElement('div');
   meta.className = 'wizard-r32-meta';
   meta.innerHTML = `
     <span class="wizard-r32-kickoff">Kick-off: ${kickoff ? formatKickoff(kickoff) : 'TBD'}</span>
-    <span class="wizard-r32-status ${unlocked ? 'open' : 'locked'}">
-      ${unlocked ? '🔓 Picks open' : `🔒 Opens ${formatKickoff(koUnlockAt(roundId, idx).toISOString())}`}
-    </span>
+    <span class="wizard-r32-status ${pickable ? 'open' : 'locked'}">${statusHtml}</span>
   `;
   body.appendChild(meta);
 
@@ -1067,6 +1122,17 @@ function renderWizardKoRound(body, roundId) {
       </div>
     `;
     body.appendChild(lock);
+  } else if (closed) {
+    const card = buildKoMatchCard(roundId, idx);
+    card.classList.add('wizard-ko-card', 'wizard-ko-card-solo');
+    body.appendChild(card);
+    const note = document.createElement('div');
+    note.className = 'wizard-lock-card';
+    note.innerHTML = `
+      <div class="lock-title">Picks closed for this match</div>
+      <div class="lock-sub">Picks lock 30 minutes before kickoff. Your last pick (if any) is shown above and remains submitted.</div>
+    `;
+    body.appendChild(note);
   } else {
     const card = buildKoMatchCard(roundId, idx);
     card.classList.add('wizard-ko-card', 'wizard-ko-card-solo');
@@ -1077,12 +1143,12 @@ function renderWizardKoRound(body, roundId) {
   let openCount = 0;
   let pickedCount = 0;
   for (let i = 0; i < total; i++) {
-    if (koIsUnlocked(roundId, i)) openCount += 1;
+    if (koIsPickable(roundId, i)) openCount += 1;
     if (((picks.ko[roundId] || {})[i] || {}).winner) pickedCount += 1;
   }
   const summary = document.createElement('div');
   summary.className = 'wizard-r32-summary';
-  summary.textContent = `${pickedCount} of ${total} matches picked · ${openCount} currently unlocked`;
+  summary.textContent = `${pickedCount} of ${total} matches picked · ${openCount} currently open for picks`;
   body.appendChild(summary);
 
   const note = document.createElement('div');
@@ -1168,7 +1234,7 @@ function moveWizard(delta) {
     return;
   }
   wizardIdx = Math.min(WIZARD_STEPS.length - 1, Math.max(0, wizardIdx + delta));
-  // When entering any KO round, jump to the first unlocked, unpicked match for convenience.
+  // When entering any KO round, jump to the first pickable, unpicked match for convenience.
   const step = WIZARD_STEPS[wizardIdx];
   if (step && step.kind === 'ko') {
     const roundId = step.round;
@@ -1176,11 +1242,11 @@ function moveWizard(delta) {
     let landed = false;
     for (let i = 0; i < total; i++) {
       const picked = ((picks.ko[roundId] || {})[i] || {}).winner;
-      if (koIsUnlocked(roundId, i) && !picked) { koCursor[roundId] = i; landed = true; break; }
+      if (koIsPickable(roundId, i) && !picked) { koCursor[roundId] = i; landed = true; break; }
     }
     if (!landed) {
       for (let i = 0; i < total; i++) {
-        if (koIsUnlocked(roundId, i)) { koCursor[roundId] = i; landed = true; break; }
+        if (koIsPickable(roundId, i)) { koCursor[roundId] = i; landed = true; break; }
       }
     }
     if (!landed) koCursor[roundId] = 0;

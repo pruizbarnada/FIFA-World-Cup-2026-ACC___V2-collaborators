@@ -8,7 +8,7 @@ import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +35,56 @@ SCORE_BONUS: dict[str, int] = {"r32": 5, "r16": 5, "qf": 5, "sf": 5, "f": 5}
 MAX_MATCH_SCORE = 30
 KO_ROUND_IDS = ("r32", "r16", "qf", "sf", "f")
 GROUP_LETTERS = tuple("ABCDEFGHIJKL")
+
+# Per-match kickoff times in UTC. Indexed in bracket-tree order so they line up
+# with the R32/R16_PAIRS/QF_PAIRS/SF_PAIRS/F_PAIRS structure in static/app.js.
+# Used to enforce the per-match 30-minute lock server-side.
+KO_KICKOFFS: dict[str, tuple[str, ...]] = {
+    "r32": (
+        "2026-06-29T20:30:00+00:00",  # M74
+        "2026-06-30T21:00:00+00:00",  # M77
+        "2026-06-28T19:00:00+00:00",  # M73
+        "2026-06-30T01:00:00+00:00",  # M75
+        "2026-07-02T23:00:00+00:00",  # M83
+        "2026-07-02T19:00:00+00:00",  # M84
+        "2026-07-02T00:00:00+00:00",  # M81
+        "2026-07-01T20:00:00+00:00",  # M82
+        "2026-06-29T17:00:00+00:00",  # M76
+        "2026-06-30T17:00:00+00:00",  # M78
+        "2026-07-01T01:00:00+00:00",  # M79
+        "2026-07-01T16:00:00+00:00",  # M80
+        "2026-07-03T22:00:00+00:00",  # M86
+        "2026-07-03T18:00:00+00:00",  # M88
+        "2026-07-03T03:00:00+00:00",  # M85
+        "2026-07-04T01:30:00+00:00",  # M87
+    ),
+    "r16": (
+        "2026-07-04T21:00:00+00:00",  # M89
+        "2026-07-04T17:00:00+00:00",  # M90
+        "2026-07-06T19:00:00+00:00",  # M93
+        "2026-07-07T00:00:00+00:00",  # M94
+        "2026-07-05T20:00:00+00:00",  # M91
+        "2026-07-06T00:00:00+00:00",  # M92
+        "2026-07-07T16:00:00+00:00",  # M95
+        "2026-07-07T20:00:00+00:00",  # M96
+    ),
+    "qf": (
+        "2026-07-09T20:00:00+00:00",  # M97
+        "2026-07-10T19:00:00+00:00",  # M98
+        "2026-07-11T21:00:00+00:00",  # M99
+        "2026-07-12T01:00:00+00:00",  # M100
+    ),
+    "sf": (
+        "2026-07-14T19:00:00+00:00",  # M101
+        "2026-07-15T19:00:00+00:00",  # M102
+    ),
+    "f": (
+        "2026-07-19T19:00:00+00:00",  # M104
+    ),
+}
+
+# Picks for a knockout match lock this many minutes before kickoff.
+KO_LOCK_MINUTES_BEFORE = 30
 
 RESULTS_KEY = "wc2026_results"
 
@@ -155,6 +205,28 @@ def picks_locked(now: datetime | None = None) -> bool:
     if dt is None:
         return False
     return (now or datetime.now(timezone.utc)) >= dt
+
+
+def ko_match_kickoff(round_id: str, match_idx: int) -> datetime | None:
+    kickoffs = KO_KICKOFFS.get(round_id)
+    if not kickoffs or match_idx < 0 or match_idx >= len(kickoffs):
+        return None
+    try:
+        dt = datetime.fromisoformat(kickoffs[match_idx])
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def ko_match_is_closed(round_id: str, match_idx: int, now: datetime | None = None) -> bool:
+    """True when picks for this match are no longer accepted (within 30 min of kickoff)."""
+    kickoff = ko_match_kickoff(round_id, match_idx)
+    if kickoff is None:
+        return False
+    lock_at = kickoff - timedelta(minutes=KO_LOCK_MINUTES_BEFORE)
+    return (now or datetime.now(timezone.utc)) >= lock_at
 
 
 def is_email_allowed(email: str) -> bool:
@@ -927,26 +999,54 @@ def save_picks():
     if not isinstance(picks, dict):
         return jsonify({"ok": False, "error": "Invalid picks payload."}), 400
 
+    # Load the player's previous submission once so we can fall back to it for
+    # any field that's locked (globally or per-match within 30 min of kickoff).
+    stored: dict = {}
+    with db_connection() as conn:
+        row = conn.execute(
+            "SELECT picks_json FROM submissions WHERE email = ?", (email,)
+        ).fetchone()
+    if row:
+        try:
+            existing = json.loads(row["picks_json"])
+        except (TypeError, ValueError):
+            existing = {}
+        if isinstance(existing, dict):
+            stored = existing
+
     locked = picks_locked()
     if locked:
-        stored_groups: dict = {}
-        stored_thirds: list = []
-        with db_connection() as conn:
-            row = conn.execute(
-                "SELECT picks_json FROM submissions WHERE email = ?", (email,)
-            ).fetchone()
-        if row:
-            try:
-                existing = json.loads(row["picks_json"])
-            except (TypeError, ValueError):
-                existing = {}
-            if isinstance(existing, dict):
-                if isinstance(existing.get("groups"), dict):
-                    stored_groups = existing["groups"]
-                if isinstance(existing.get("thirds_ranking"), list):
-                    stored_thirds = existing["thirds_ranking"]
+        stored_groups = stored.get("groups") if isinstance(stored.get("groups"), dict) else {}
+        stored_thirds = stored.get("thirds_ranking") if isinstance(stored.get("thirds_ranking"), list) else []
         picks["groups"] = stored_groups
         picks["thirds_ranking"] = stored_thirds
+
+    # Per-match KO lock: once a knockout match is within 30 minutes of kickoff,
+    # ignore any incoming changes for that slot and keep whatever was last stored.
+    incoming_ko = picks.get("ko") if isinstance(picks.get("ko"), dict) else {}
+    stored_ko = stored.get("ko") if isinstance(stored.get("ko"), dict) else {}
+    merged_ko: dict[str, dict] = {}
+    for round_id in KO_ROUND_IDS:
+        incoming_round = incoming_ko.get(round_id) if isinstance(incoming_ko.get(round_id), dict) else {}
+        stored_round = stored_ko.get(round_id) if isinstance(stored_ko.get(round_id), dict) else {}
+        round_out: dict = {}
+        match_keys = set(incoming_round.keys()) | set(stored_round.keys())
+        for key in match_keys:
+            try:
+                match_idx = int(key)
+            except (TypeError, ValueError):
+                continue
+            if ko_match_is_closed(round_id, match_idx):
+                if key in stored_round:
+                    round_out[key] = stored_round[key]
+            else:
+                if key in incoming_round:
+                    round_out[key] = incoming_round[key]
+                elif key in stored_round:
+                    round_out[key] = stored_round[key]
+        if round_out:
+            merged_ko[round_id] = round_out
+    picks["ko"] = merged_ko
 
     score = calculate_score(picks, get_results())
     timestamp = utc_now_iso()
