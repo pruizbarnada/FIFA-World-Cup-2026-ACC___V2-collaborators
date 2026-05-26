@@ -18,22 +18,41 @@ const GROUPS = [
 const FLAG = {};
 GROUPS.forEach(g => g.teams.forEach(([f, n]) => { FLAG[n] = f; }));
 
+// R32 entries are listed in bracket-tree order (top → bottom of the bracket),
+// so the sequential R16_PAIRS [[0,1],[2,3],…] produce the official FIFA pairings.
+// Comments show the official match number (M73–M88) and venue.
 const R32 = [
+  // M73 — SoFi Stadium, Inglewood
   { home:{type:'group',group:'A',pos:2}, away:{type:'group',group:'B',pos:2} },
-  { home:{type:'group',group:'C',pos:1}, away:{type:'group',group:'F',pos:2} },
+  // M74 — Gillette Stadium, Foxborough
   { home:{type:'group',group:'E',pos:1}, away:{type:'third',rank:1}          },
+  // M75 — Estadio BBVA, Guadalupe
   { home:{type:'group',group:'F',pos:1}, away:{type:'group',group:'C',pos:2} },
-  { home:{type:'group',group:'E',pos:2}, away:{type:'group',group:'I',pos:2} },
-  { home:{type:'group',group:'I',pos:1}, away:{type:'third',rank:2}          },
-  { home:{type:'group',group:'A',pos:1}, away:{type:'third',rank:3}          },
-  { home:{type:'group',group:'L',pos:1}, away:{type:'third',rank:4}          },
-  { home:{type:'group',group:'G',pos:1}, away:{type:'third',rank:5}          },
-  { home:{type:'group',group:'D',pos:1}, away:{type:'third',rank:6}          },
-  { home:{type:'group',group:'H',pos:1}, away:{type:'group',group:'J',pos:2} },
+  // M76 — NRG Stadium, Houston
+  { home:{type:'group',group:'C',pos:1}, away:{type:'group',group:'F',pos:2} },
+  // M83 — BMO Field, Toronto
   { home:{type:'group',group:'K',pos:2}, away:{type:'group',group:'L',pos:2} },
-  { home:{type:'group',group:'B',pos:1}, away:{type:'third',rank:7}          },
-  { home:{type:'group',group:'D',pos:2}, away:{type:'group',group:'G',pos:2} },
+  // M84 — SoFi Stadium, Inglewood
+  { home:{type:'group',group:'H',pos:1}, away:{type:'group',group:'J',pos:2} },
+  // M81 — Levi's Stadium, Santa Clara
+  { home:{type:'group',group:'D',pos:1}, away:{type:'third',rank:6}          },
+  // M82 — Lumen Field, Seattle
+  { home:{type:'group',group:'G',pos:1}, away:{type:'third',rank:5}          },
+  // M77 — MetLife Stadium, East Rutherford
+  { home:{type:'group',group:'I',pos:1}, away:{type:'third',rank:2}          },
+  // M78 — AT&T Stadium, Arlington
+  { home:{type:'group',group:'E',pos:2}, away:{type:'group',group:'I',pos:2} },
+  // M79 — Estadio Azteca, Mexico City
+  { home:{type:'group',group:'A',pos:1}, away:{type:'third',rank:3}          },
+  // M80 — Mercedes-Benz Stadium, Atlanta
+  { home:{type:'group',group:'L',pos:1}, away:{type:'third',rank:4}          },
+  // M86 — Hard Rock Stadium, Miami Gardens
   { home:{type:'group',group:'J',pos:1}, away:{type:'group',group:'H',pos:2} },
+  // M88 — AT&T Stadium, Arlington
+  { home:{type:'group',group:'D',pos:2}, away:{type:'group',group:'G',pos:2} },
+  // M85 — BC Place, Vancouver
+  { home:{type:'group',group:'B',pos:1}, away:{type:'third',rank:7}          },
+  // M87 — Arrowhead Stadium, Kansas City
   { home:{type:'group',group:'K',pos:1}, away:{type:'third',rank:8}          },
 ];
 
@@ -54,30 +73,50 @@ const ROUND_ORDER = ['r32','r16','qf','sf','f'];
 const PAIRS_MAP   = { r16:R16_PAIRS, qf:QF_PAIRS, sf:SF_PAIRS, f:F_PAIRS };
 const ROUND_LABELS = { r32:'Round of 32', r16:'Round of 16', qf:'Quarter-finals', sf:'Semi-finals', f:'Final' };
 
-// Approximate WC 2026 KO kickoff times (UTC). Used only to gate picks until 72h before each match.
+// Official WC 2026 KO kickoff times (UTC). Indices follow bracket-tree order so
+// they line up with the R32 array and the R16_PAIRS/QF_PAIRS/SF_PAIRS/F_PAIRS
+// pairings above. Used to gate picks until 72h before each match.
 const KO_KICKOFFS = {
   r32: [
-    '2026-06-28T16:00:00Z', '2026-06-28T19:00:00Z', '2026-06-28T22:00:00Z', '2026-06-29T01:00:00Z',
-    '2026-06-29T16:00:00Z', '2026-06-29T19:00:00Z', '2026-06-29T22:00:00Z', '2026-06-30T01:00:00Z',
-    '2026-06-30T16:00:00Z', '2026-06-30T19:00:00Z', '2026-06-30T22:00:00Z', '2026-07-01T01:00:00Z',
-    '2026-07-01T16:00:00Z', '2026-07-01T19:00:00Z', '2026-07-01T22:00:00Z', '2026-07-02T01:00:00Z',
+    '2026-06-28T19:00:00Z', // M73 — A2 vs B2
+    '2026-06-29T20:30:00Z', // M74 — E1 vs 3rd #1
+    '2026-06-30T01:00:00Z', // M75 — F1 vs C2
+    '2026-06-29T17:00:00Z', // M76 — C1 vs F2
+    '2026-07-02T23:00:00Z', // M83 — K2 vs L2
+    '2026-07-02T19:00:00Z', // M84 — H1 vs J2
+    '2026-07-02T00:00:00Z', // M81 — D1 vs 3rd #6
+    '2026-07-01T20:00:00Z', // M82 — G1 vs 3rd #5
+    '2026-06-30T21:00:00Z', // M77 — I1 vs 3rd #2
+    '2026-06-30T17:00:00Z', // M78 — E2 vs I2
+    '2026-07-01T01:00:00Z', // M79 — A1 vs 3rd #3
+    '2026-07-01T16:00:00Z', // M80 — L1 vs 3rd #4
+    '2026-07-03T22:00:00Z', // M86 — J1 vs H2
+    '2026-07-03T18:00:00Z', // M88 — D2 vs G2
+    '2026-07-03T03:00:00Z', // M85 — B1 vs 3rd #7
+    '2026-07-04T01:30:00Z', // M87 — K1 vs 3rd #8
   ],
   r16: [
-    '2026-07-04T16:00:00Z', '2026-07-04T20:00:00Z',
-    '2026-07-05T16:00:00Z', '2026-07-05T20:00:00Z',
-    '2026-07-06T16:00:00Z', '2026-07-06T20:00:00Z',
-    '2026-07-07T16:00:00Z', '2026-07-07T20:00:00Z',
+    '2026-07-04T21:00:00Z', // M89 — W M73 vs W M74
+    '2026-07-04T17:00:00Z', // M90 — W M75 vs W M76
+    '2026-07-06T19:00:00Z', // M93 — W M83 vs W M84
+    '2026-07-07T00:00:00Z', // M94 — W M81 vs W M82
+    '2026-07-05T20:00:00Z', // M91 — W M77 vs W M78
+    '2026-07-06T00:00:00Z', // M92 — W M79 vs W M80
+    '2026-07-07T16:00:00Z', // M95 — W M86 vs W M88
+    '2026-07-07T20:00:00Z', // M96 — W M85 vs W M87
   ],
   qf: [
-    '2026-07-09T20:00:00Z', '2026-07-10T20:00:00Z',
-    '2026-07-11T20:00:00Z', '2026-07-11T23:00:00Z',
+    '2026-07-09T20:00:00Z', // M97 — W M89 vs W M90
+    '2026-07-10T19:00:00Z', // M98 — W M93 vs W M94
+    '2026-07-11T21:00:00Z', // M99 — W M91 vs W M92
+    '2026-07-12T01:00:00Z', // M100 — W M95 vs W M96
   ],
   sf: [
-    '2026-07-14T20:00:00Z',
-    '2026-07-15T20:00:00Z',
+    '2026-07-14T19:00:00Z', // M101 — W M97 vs W M98
+    '2026-07-15T19:00:00Z', // M102 — W M99 vs W M100
   ],
   f: [
-    '2026-07-19T19:00:00Z',
+    '2026-07-19T19:00:00Z', // M104 — W M101 vs W M102
   ],
 };
 const UNLOCK_HOURS_BEFORE = 72;
