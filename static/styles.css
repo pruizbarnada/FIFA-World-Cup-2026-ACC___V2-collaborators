@@ -535,6 +535,15 @@ body.picks-locked #wizardContent .third-item {
 .pts-lbl { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
 .score-card-note { border-color: #d0e8f5; background: #f0f8ff; }
 .score-note-text { font-size: 13.5px; color: #4a6a80; line-height: 1.6; }
+.score-card-prize {
+  border-color: #e2b53b;
+  background: #fff7d6;
+  box-shadow: 0 1px 0 #f0c75a inset;
+}
+.score-card-prize .score-card-title { color: #8a6a14; }
+.score-card-prize .pts-item { background: #fffbe6; border: 1px solid #f0d97a; }
+.score-card-prize .pts-val { color: #b8860b; }
+.score-card-prize .pts-lbl { color: #6b5510; }
 
 /* ── Leaderboard ── */
 .lb-row {
