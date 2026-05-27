@@ -155,7 +155,7 @@ function formatKickoff(iso) {
 let currentMode = '';
 let playerEmail = '';
 let playerName  = '';
-let picks = { groups:{}, thirds_ranking:[], ko:{}, podium:{first:null,second:null,third:null,fourth:null} };
+let picks = { groups:{}, thirds_ranking:[], ko:{}, podium:{first:null,second:null,third:null,fourth:null}, pichichi:null };
 let wizardIdx = 0;
 let koCursor = { r32: 0, r16: 0, qf: 0, sf: 0, f: 0 };
 let lastChampionRequested = '';
@@ -170,6 +170,7 @@ function buildWizardSteps() {
     { kind:'podium', slot:'second', title:'Pick the runner-up', sub:'Who finishes second — i.e. who loses the final?' },
     { kind:'podium', slot:'third',  title:'Pick the 3rd place', sub:'Who wins the bronze game between the semi-final losers?' },
     { kind:'podium', slot:'fourth', title:'Pick the 4th place', sub:'Who loses the bronze game between the semi-final losers?' },
+    { kind:'pichichi', title:'Pick the top-scorer country', sub:'Which country will the tournament top scorer (<em>pichichi</em>) play for? Any country is allowed.' },
   ];
   GROUPS.forEach(g => {
     steps.push({ kind:'group', group:g.name, title:`Group ${g.name}`, sub:'Tap a team to cycle 1st → 2nd → 3rd → clear.' });
@@ -266,6 +267,7 @@ function normalizePicks() {
   for (const slot of ['first','second','third','fourth']) {
     if (typeof picks.podium[slot] !== 'string') picks.podium[slot] = null;
   }
+  if (typeof picks.pichichi !== 'string') picks.pichichi = null;
 
   // Migrate legacy fields into podium.first
   if (!picks.podium.first && typeof picks.champion === 'string' && picks.champion) {
@@ -371,6 +373,7 @@ function pickResumeStep() {
 function stepIsComplete(step) {
   if (step.kind === 'podium') return Boolean(picks.podium && picks.podium[step.slot]);
   if (step.kind === 'champion') return Boolean(picks.podium && picks.podium.first);
+  if (step.kind === 'pichichi') return Boolean(picks.pichichi);
   if (step.kind === 'group') {
     if (isPicksLocked()) return true;
     const g = picks.groups[step.group] || {};
@@ -410,6 +413,7 @@ function showTab(id, btn) {
 // ── Groups ────────────────────────────────────────────────────────────────────
 function renderGroups() {
   renderPodiumPicker();
+  renderPichichiPicker();
   const grid = qs('groupsGrid');
   grid.innerHTML = '';
   GROUPS.forEach(group => grid.appendChild(buildGroupCard(group)));
@@ -506,6 +510,76 @@ function renderPodiumPicker() {
 
     container.appendChild(row);
   });
+  polyfillEmoji();
+}
+
+function renderPichichiPicker() {
+  const container = qs('pichichiPicker');
+  if (!container) return;
+
+  const sortedTeams = allTeams().slice().sort();
+  const currentTeam = picks.pichichi;
+
+  container.innerHTML = '';
+
+  const row = document.createElement('div');
+  row.className = 'podium-row';
+
+  const label = document.createElement('label');
+  label.className = 'podium-label';
+  label.innerHTML = '⚽ Country with the top-scorer (<em>pichichi</em>) — 5 pts';
+  row.appendChild(label);
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'podium-dropdown';
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'podium-dropdown-toggle';
+  toggle.innerHTML = currentTeam
+    ? `<span class="podium-toggle-flag">${FLAG[currentTeam] || '🏳️'}</span>` +
+      `<span class="podium-toggle-name">${currentTeam}</span>` +
+      `<span class="podium-toggle-arrow">▾</span>`
+    : `<span class="podium-toggle-name placeholder">— choose country —</span>` +
+      `<span class="podium-toggle-arrow">▾</span>`;
+
+  const menu = document.createElement('div');
+  menu.className = 'podium-dropdown-menu';
+  menu.hidden = true;
+
+  sortedTeams.forEach(team => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'podium-dropdown-item' + (team === currentTeam ? ' selected' : '');
+    item.innerHTML =
+      `<span class="podium-item-flag">${FLAG[team] || '🏳️'}</span>` +
+      `<span class="podium-item-name">${team}</span>`;
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      picks.pichichi = team;
+      renderPichichiPicker();
+    });
+    menu.appendChild(item);
+  });
+
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.querySelectorAll('.podium-dropdown-menu').forEach((m) => {
+      if (m !== menu) m.hidden = true;
+    });
+    menu.hidden = !menu.hidden;
+  });
+
+  dropdown.appendChild(toggle);
+  dropdown.appendChild(menu);
+  row.appendChild(dropdown);
+
+  const flag = document.createElement('span');
+  flag.className = 'podium-flag';
+  flag.innerHTML = currentTeam ? (FLAG[currentTeam] || '🏳️') : '';
+  row.appendChild(flag);
+
+  container.appendChild(row);
   polyfillEmoji();
 }
 
@@ -987,6 +1061,7 @@ function renderWizard() {
 
   if (step.kind === 'podium')       renderWizardPodium(body, step.slot);
   else if (step.kind === 'champion')renderWizardPodium(body, 'first');
+  else if (step.kind === 'pichichi')renderWizardPichichi(body);
   else if (step.kind === 'group')   renderWizardGroup(body, step.group);
   else if (step.kind === 'thirds')  renderWizardThirds(body);
   else if (step.kind === 'ko')      renderWizardKoRound(body, step.round);
@@ -1038,6 +1113,32 @@ function renderWizardPodium(body, slot) {
   } else {
     help.textContent = `Pick the country you think finishes in ${PODIUM_LABEL[slot]}. Countries you've already used for another slot are disabled.`;
   }
+  body.appendChild(help);
+}
+
+function renderWizardPichichi(body) {
+  const grid = document.createElement('div');
+  grid.className = 'champion-grid';
+  const current = picks.pichichi || null;
+  const sortedTeams = allTeams().slice().sort();
+  sortedTeams.forEach(team => {
+    const btn = document.createElement('button');
+    const isCurrent = current === team;
+    btn.className = 'champion-btn' + (isCurrent ? ' selected' : '');
+    btn.innerHTML = `<span class="champion-flag">${FLAG[team] || '🏳️'}</span><span class="champion-name">${team}</span>`;
+    btn.addEventListener('click', () => {
+      picks.pichichi = team;
+      renderWizard();
+    });
+    grid.appendChild(btn);
+  });
+  body.appendChild(grid);
+
+  const help = document.createElement('div');
+  help.className = 'wizard-subtle';
+  help.innerHTML = current
+    ? `You picked ${FLAG[current] || '🏳️'} ${current} as the top-scorer country. Worth 5 pts if correct.`
+    : 'Pick the country whose player you think will finish as the tournament top scorer (<em>pichichi</em>). Any country is allowed, even ones you used for the podium.';
   body.appendChild(help);
 }
 
@@ -1185,13 +1286,16 @@ function renderWizardReview(body) {
     const t = picks.podium && picks.podium[slot];
     return `<div class="review-row"><strong>${label}:</strong> ${t ? `${FLAG[t] || '🏳️'} ${t}` : '<em>not picked</em>'}</div>`;
   };
+  const pich = picks.pichichi;
+  const pichRow = `<div class="review-row"><strong>⚽ Top scorer country (<em>pichichi</em>):</strong> ${pich ? `${FLAG[pich] || '🏳️'} ${pich}` : '<em>not picked</em>'}</div>`;
   sections.push(`
     <div class="review-section">
-      <div class="review-title">Podium prediction</div>
+      <div class="review-title">Pre-tournament predictions</div>
       ${podiumRow('first', '🥇 Champion')}
       ${podiumRow('second', '🥈 Runner-up')}
       ${podiumRow('third', '🥉 3rd place')}
       ${podiumRow('fourth', '4️⃣ 4th place')}
+      ${pichRow}
     </div>
   `);
 
@@ -1265,8 +1369,8 @@ async function wizardSaveAndPause() {
   showMessage('Saved — come back any time');
 }
 
-// ── Champion latest match card ────────────────────────────────────────────────
-async function refreshChampionCard(targetId) {
+// ── Champion banner ──────────────────────────────────────────────────────────
+function refreshChampionCard(targetId) {
   const el = qs(targetId);
   if (!el) return;
   if (!picks.champion) { el.style.display = 'none'; return; }
@@ -1281,53 +1385,7 @@ async function refreshChampionCard(targetId) {
         <div class="champion-card-team">${team}</div>
       </div>
     </div>
-    <div class="champion-card-body">Loading latest match…</div>
   `;
-  polyfillEmoji();
-
-  if (lastChampionRequested === team) {
-    /* still refresh to keep it current */
-  }
-  lastChampionRequested = team;
-
-  try {
-    const res = await fetch(`/api/champion-latest?team=${encodeURIComponent(team)}`);
-    const data = await res.json();
-    const body = el.querySelector('.champion-card-body');
-    if (!data.ok) {
-      body.innerHTML = `<em>Couldn't reach the match-data API — try again later.</em>`;
-      return;
-    }
-    if (!data.match) {
-      body.innerHTML = `<em>No recent match data found for ${team}'s national team.</em>`;
-      return;
-    }
-    const m = data.match;
-    // Sanity check: if the API returned a match that doesn't involve the country, treat it as unmatched.
-    const lc = s => (s || '').toLowerCase();
-    const tc = lc(team);
-    if (lc(m.home) !== tc && lc(m.away) !== tc &&
-        lc(data.match.team_resolved) !== tc) {
-      body.innerHTML = `<em>No recent national-team match data found for ${team}.</em>`;
-      return;
-    }
-    const scoreText = (m.homeScore != null && m.awayScore != null) ? `${m.homeScore}–${m.awayScore}` : 'vs';
-    const when = [m.date, m.time].filter(Boolean).join(' ');
-    body.innerHTML = `
-      <div class="champion-match">
-        <div class="champion-match-when">${when || ''} · ${m.league || ''}</div>
-        <div class="champion-match-teams">
-          <strong>${m.home || '?'}</strong>
-          <span class="champion-match-score">${scoreText}</span>
-          <strong>${m.away || '?'}</strong>
-        </div>
-        ${m.venue ? `<div class="champion-match-venue">${m.venue}</div>` : ''}
-      </div>
-    `;
-  } catch {
-    const body = el.querySelector('.champion-card-body');
-    if (body) body.innerHTML = '<em>Couldn\'t load latest match (network).</em>';
-  }
   polyfillEmoji();
 }
 

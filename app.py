@@ -364,11 +364,21 @@ def calculate_score(picks: dict[str, Any], results: dict | None = None) -> int:
     score += _score_thirds(picks.get("thirds_ranking"), results.get("thirds_advancing"))
     score += _score_ko(picks.get("ko"), results.get("ko"))
     score += _score_podium(_picks_podium(picks), results.get("podium"))
+    score += _score_pichichi(picks.get("pichichi"), results.get("pichichi"))
     return score
+
+
+def _score_pichichi(user: Any, actual: Any) -> int:
+    if not isinstance(user, str) or not user:
+        return 0
+    if not isinstance(actual, str) or not actual:
+        return 0
+    return PICHICHI_POINTS if user == actual else 0
 
 
 # Tournament podium scoring (champion / runner-up / 3rd-place playoff winner / loser)
 PODIUM_POINTS = {"first": 10, "second": 6, "third": 4, "fourth": 3}
+PICHICHI_POINTS = 5
 
 
 def _picks_podium(picks: dict[str, Any]) -> dict[str, Any]:
@@ -864,6 +874,7 @@ def _build_submissions_csv() -> str:
     header: list[str] = ["email", "name", "score", "updated_at"]
     for slot in ("first", "second", "third", "fourth"):
         header.append(f"podium_{slot}")
+    header.append("pichichi")
     for letter in GROUP_LETTERS:
         for pos in ("first", "second", "third"):
             header.append(f"group_{letter}_{pos}")
@@ -897,6 +908,8 @@ def _build_submissions_csv() -> str:
         podium = picks.get("podium") if isinstance(picks.get("podium"), dict) else {}
         for slot in ("first", "second", "third", "fourth"):
             out.append(podium.get(slot) or "")
+        pichichi = picks.get("pichichi") if isinstance(picks.get("pichichi"), str) else ""
+        out.append(pichichi or "")
 
         groups = picks.get("groups") if isinstance(picks.get("groups"), dict) else {}
         for letter in GROUP_LETTERS:
