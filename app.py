@@ -377,6 +377,8 @@ def _score_pichichi(user: Any, actual: Any) -> int:
 
 
 # Tournament podium scoring (champion / runner-up / 3rd-place playoff winner / loser)
+# Points follow the teams' actual finishing slots; users do not lose those
+# points just because they put the top-four teams in a different order.
 PODIUM_POINTS = {"first": 10, "second": 6, "third": 4, "fourth": 3}
 PICHICHI_POINTS = 5
 
@@ -393,11 +395,18 @@ def _picks_podium(picks: dict[str, Any]) -> dict[str, Any]:
 def _score_podium(user: Any, actual: Any) -> int:
     if not isinstance(user, dict) or not isinstance(actual, dict):
         return 0
+    predicted_top_four = {
+        team
+        for team in user.values()
+        if isinstance(team, str) and team
+    }
+    if not predicted_top_four:
+        return 0
+
     score = 0
     for slot, pts in PODIUM_POINTS.items():
-        u = user.get(slot)
         a = actual.get(slot)
-        if isinstance(u, str) and isinstance(a, str) and u and u == a:
+        if isinstance(a, str) and a in predicted_top_four:
             score += pts
     return score
 
@@ -542,6 +551,43 @@ def _decide_winner(match: dict) -> str | None:
     return None
 
 
+def _known_team_name(team: Any) -> str | None:
+    if not isinstance(team, dict):
+        return None
+    name = (team.get("name") or "").strip()
+    if not name or name.lower() in {"tbd", "to be determined", "unknown"}:
+        return None
+    return name
+
+
+def _match_utc_timestamp(match: dict) -> float | None:
+    value = match.get("utcDate")
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _ko_index_for_match(round_id: str, match: dict, counters: dict[str, int]) -> int:
+    match_ts = _match_utc_timestamp(match)
+    kickoffs = KO_KICKOFFS.get(round_id) or ()
+    if match_ts is not None:
+        for idx, kickoff in enumerate(kickoffs):
+            try:
+                kickoff_ts = datetime.fromisoformat(kickoff).timestamp()
+            except ValueError:
+                continue
+            if abs(match_ts - kickoff_ts) < 60:
+                counters[round_id] = max(counters[round_id], idx + 1)
+                return idx
+
+    idx = counters[round_id]
+    counters[round_id] += 1
+    return idx
+
+
 def parse_football_data_results(matches: list[dict]) -> dict:
     groups: dict[str, dict[str, dict[str, int]]] = {}
     ko: dict[str, dict[str, dict[str, Any]]] = {r: {} for r in KO_ROUND_IDS}
@@ -549,22 +595,22 @@ def parse_football_data_results(matches: list[dict]) -> dict:
     ko_counters = {r: 0 for r in KO_ROUND_IDS}
 
     for match in matches:
-        if match.get("status") != "FINISHED":
-            continue
         stage = (match.get("stage") or "").upper()
         bucket = FOOTBALL_DATA_STAGE_MAP.get(stage)
         if bucket is None:
             continue
 
-        home_name = ((match.get("homeTeam") or {}).get("name") or "").strip()
-        away_name = ((match.get("awayTeam") or {}).get("name") or "").strip()
+        home_name = _known_team_name(match.get("homeTeam"))
+        away_name = _known_team_name(match.get("awayTeam"))
         full_time = (match.get("score") or {}).get("fullTime") or {}
         home_score = _safe_score(full_time.get("home"))
         away_score = _safe_score(full_time.get("away"))
 
         if bucket == "group":
+            if match.get("status") != "FINISHED":
+                continue
             group_letter = (match.get("group") or "").replace("GROUP_", "").strip().upper()
-            if not group_letter or home_score is None or away_score is None:
+            if not group_letter or home_name is None or away_name is None or home_score is None or away_score is None:
                 continue
             tbl = groups.setdefault(group_letter, {})
             for team in (home_name, away_name):
@@ -581,16 +627,22 @@ def parse_football_data_results(matches: list[dict]) -> dict:
                 tbl[home_name]["pts"] += 1
                 tbl[away_name]["pts"] += 1
         else:
-            winner = _decide_winner(match)
-            if winner is None:
+            if home_name is None and away_name is None and match.get("status") != "FINISHED":
                 continue
-            idx = ko_counters[bucket]
-            entry: dict[str, Any] = {"winner": winner}
+            idx = _ko_index_for_match(bucket, match, ko_counters)
+            entry: dict[str, Any] = {}
+            if home_name is not None:
+                entry["homeTeam"] = home_name
+            if away_name is not None:
+                entry["awayTeam"] = away_name
+            winner = _decide_winner(match)
+            if winner is not None:
+                entry["winner"] = winner
             if home_score is not None and away_score is not None:
                 entry["homeScore"] = home_score
                 entry["awayScore"] = away_score
-            ko[bucket][str(idx)] = entry
-            ko_counters[bucket] += 1
+            if entry:
+                ko[bucket][str(idx)] = entry
 
     standings: dict[str, dict[str, str]] = {}
     third_pool: list[tuple[int, int, int, str, str]] = []

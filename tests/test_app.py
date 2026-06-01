@@ -326,6 +326,15 @@ class PodiumScoringTests(unittest.TestCase):
         results = {"podium": {"first": "Brazil", "second": "France", "third": "Argentina", "fourth": "Spain"}}
         self.assertEqual(app_module.calculate_score(picks, results), 3)
 
+    def test_top_four_team_scores_even_when_order_is_wrong(self):
+        picks = {
+            "podium": {"first": "Spain", "second": "Argentina", "third": "France", "fourth": "Brazil"}
+        }
+        results = {
+            "podium": {"first": "Brazil", "second": "France", "third": "Argentina", "fourth": "Spain"}
+        }
+        self.assertEqual(app_module.calculate_score(picks, results), 23)
+
 
 class TeamPickerTests(unittest.TestCase):
     def test_rejects_club_team_for_country_query(self):
@@ -387,6 +396,7 @@ class FootballDataParserTests(unittest.TestCase):
             {
                 "status": "FINISHED",
                 "stage": "ROUND_OF_32",
+                "utcDate": "2026-06-29T20:30:00Z",
                 "homeTeam": {"name": "Mexico"},
                 "awayTeam": {"name": "Canada"},
                 "score": {"winner": "HOME_TEAM", "fullTime": {"home": 3, "away": 1}},
@@ -394,6 +404,7 @@ class FootballDataParserTests(unittest.TestCase):
             {
                 "status": "SCHEDULED",
                 "stage": "ROUND_OF_16",
+                "utcDate": "2026-07-04T21:00:00Z",
                 "homeTeam": {"name": "Mexico"},
                 "awayTeam": {"name": "Brazil"},
                 "score": {"winner": None, "fullTime": {"home": None, "away": None}},
@@ -402,9 +413,13 @@ class FootballDataParserTests(unittest.TestCase):
 
         out = app_module.parse_football_data_results(matches)
         self.assertEqual(out["groups"]["A"]["first"], "Mexico")
+        self.assertEqual(out["ko"]["r32"]["0"]["homeTeam"], "Mexico")
+        self.assertEqual(out["ko"]["r32"]["0"]["awayTeam"], "Canada")
         self.assertEqual(out["ko"]["r32"]["0"]["winner"], "Mexico")
         self.assertEqual(out["ko"]["r32"]["0"]["homeScore"], 3)
-        self.assertEqual(out["ko"]["r16"], {})
+        self.assertEqual(out["ko"]["r16"]["0"]["homeTeam"], "Mexico")
+        self.assertEqual(out["ko"]["r16"]["0"]["awayTeam"], "Brazil")
+        self.assertNotIn("winner", out["ko"]["r16"]["0"])
 
 
 if __name__ == "__main__":

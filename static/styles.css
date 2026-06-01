@@ -31,7 +31,7 @@ body {
 /* ── Hero ── */
 .hero {
   background: var(--pitch);
-  padding: 2.5rem 1.5rem 2rem;
+  padding: clamp(1rem, 3vw, 1.8rem) 1rem;
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -58,10 +58,16 @@ body {
   flex-wrap: wrap;
 }
 .hero-logo {
-  height: clamp(72px, 11vw, 110px);
-  width: auto;
+  width: min(100%, 1180px);
+  height: auto;
+  max-height: min(38vw, 320px);
+  aspect-ratio: 1910 / 817;
+  object-fit: contain;
   display: block;
-  flex-shrink: 0;
+}
+.hero .hero-sub,
+.hero .hero-badge {
+  display: none;
 }
 .hero-sub {
   font-size: 13px;
@@ -944,8 +950,18 @@ body.picks-locked #wizardContent .third-item {
 }
 
 .wizard-group-card {
-  max-width: 320px;
+  width: min(100%, 440px);
+  max-width: 440px;
   margin: 0 auto;
+}
+.wizard-group-card .group-header {
+  padding: 11px 16px;
+  font-size: 20px;
+}
+.wizard-group-card .team-item {
+  min-height: 52px;
+  padding: 12px 16px;
+  font-size: 15px;
 }
 
 .wizard-ko-grid {

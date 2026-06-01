@@ -77,7 +77,7 @@ const ROUND_LABELS = { r32:'Round of 32', r16:'Round of 16', qf:'Quarter-finals'
 
 // Official WC 2026 KO kickoff times (UTC). Indices follow bracket-tree order so
 // they line up with the R32 array and the R16_PAIRS/QF_PAIRS/SF_PAIRS/F_PAIRS
-// pairings above. Used to gate picks until 72h before each match.
+// pairings above. Used to lock picks 30 minutes before each match.
 const KO_KICKOFFS = {
   r32: [
     '2026-06-29T20:30:00Z', // M74 — E1 vs 3rd #1
@@ -123,11 +123,13 @@ const KO_KICKOFFS = {
 };
 const UNLOCK_HOURS_BEFORE = 72;
 const LOCK_MINUTES_BEFORE = 30;
+const KO_PHASE_UNLOCK_AT = new Date(
+  Math.min(...Object.values(KO_KICKOFFS).flat().map(iso => new Date(iso).getTime()))
+    - UNLOCK_HOURS_BEFORE * 3600 * 1000
+);
 
 function koUnlockAt(round, idx) {
-  const kickoffs = KO_KICKOFFS[round];
-  if (!kickoffs || idx < 0 || idx >= kickoffs.length) return new Date(0);
-  return new Date(new Date(kickoffs[idx]).getTime() - UNLOCK_HOURS_BEFORE * 3600 * 1000);
+  return KO_PHASE_UNLOCK_AT;
 }
 function koLockAt(round, idx) {
   const kickoffs = KO_KICKOFFS[round];
@@ -388,8 +390,8 @@ function stepIsComplete(step) {
     const roundDef = KO_ROUNDS.find(r => r.id === step.round);
     const round = picks.ko[step.round] || {};
     for (let i = 0; i < roundDef.count; i++) {
-      // Skip matches that haven't opened yet (>72h out) and ones that have
-      // already closed (<30min to kickoff) — neither is the user's fault.
+      // Skip matches before phase two opens and ones that have already closed
+      // (<30min to kickoff) — neither is the user's fault.
       if (!koIsPickable(step.round, i)) continue;
       if (!(round[i] && round[i].winner)) return false;
     }
@@ -788,14 +790,13 @@ function resolveGroupTeam(group, pos) {
   const key = pos===1?'first':pos===2?'second':'third';
   const actual = actualResults && actualResults.groups && actualResults.groups[group];
   if (actual && actual[key]) return actual[key];
-  const gp  = picks.groups[group] || {};
-  return gp[key] || null;
+  return null;
 }
 
 function resolveThird(rank) {
   const actualList = actualResults && actualResults.thirds_advancing;
   if (Array.isArray(actualList) && actualList[rank - 1]) return actualList[rank - 1];
-  return (picks.thirds_ranking||[])[rank-1] || null;
+  return null;
 }
 
 function resolveKOWinner(round, matchIdx) {
@@ -803,6 +804,14 @@ function resolveKOWinner(round, matchIdx) {
     && actualResults.ko[round][matchIdx] && actualResults.ko[round][matchIdx].winner;
   if (actual) return actual;
   return ((picks.ko[round]||{})[matchIdx]||{}).winner || null;
+}
+
+function resolveKOMatchTeam(round, matchIdx, side) {
+  const match = actualResults && actualResults.ko && actualResults.ko[round]
+    && actualResults.ko[round][matchIdx];
+  if (!match || typeof match !== 'object') return null;
+  const key = side === 'home' ? 'homeTeam' : 'awayTeam';
+  return typeof match[key] === 'string' && match[key] ? match[key] : null;
 }
 
 async function fetchActualResults() {
@@ -826,6 +835,9 @@ function resolveSlot(slotDef) {
 }
 
 function getTeam(round, matchIdx, side) {
+  const officialTeam = resolveKOMatchTeam(round, matchIdx, side);
+  if (officialTeam) return officialTeam;
+
   if (round === 'r32') {
     const slot = side==='home' ? R32[matchIdx].home : R32[matchIdx].away;
     return resolveSlot(slot);
@@ -1216,10 +1228,10 @@ function renderWizardKoRound(body, roundId) {
     const lock = document.createElement('div');
     lock.className = 'wizard-lock-card';
     lock.innerHTML = `
-      <div class="lock-title">Picks unlock 72 hours before kickoff</div>
+      <div class="lock-title">Phase two unlocks all matches at once</div>
       <div class="lock-sub">
-        The opponents in this ${roundDef.label} match depend on earlier results that aren't in yet.
-        Come back closer to kickoff to lock in your pick.
+        The full knockout bracket opens together once phase two starts.
+        Come back then to lock in your pick.
       </div>
     `;
     body.appendChild(lock);
