@@ -16,7 +16,11 @@ import requests
 from flask import Flask, Response, abort, jsonify, redirect, render_template, request, session, url_for
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = Path(os.getenv("DB_PATH", str(BASE_DIR / "data" / "predictions.db")))
+# Single source of truth for the database location. Everything that touches the
+# DB derives from DB_PATH; set DB_DIR (e.g. a mounted Render disk like /var/data)
+# to relocate it. Do not hardcode the path anywhere else.
+DB_DIR = Path(os.getenv("DB_DIR", str(BASE_DIR / "data")))
+DB_PATH = DB_DIR / "predictions.db"
 ALLOWED_EMAILS_PATH = Path(os.getenv("ALLOWED_EMAILS_PATH", str(BASE_DIR / "allowed_emails.txt")))
 
 ACCESS_DENIED_MESSAGE = (

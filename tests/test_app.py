@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 _TEST_DB_DIR = tempfile.TemporaryDirectory()
-os.environ["DB_PATH"] = str(Path(_TEST_DB_DIR.name) / "predictions.db")
+os.environ["DB_DIR"] = _TEST_DB_DIR.name
 os.environ["SECRET_KEY"] = "test-secret"
 os.environ["ALLOWED_EMAILS_PATH"] = str(Path(_TEST_DB_DIR.name) / "allowed_emails.txt")
 

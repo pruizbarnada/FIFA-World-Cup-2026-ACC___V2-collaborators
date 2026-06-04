@@ -57,7 +57,7 @@ Render can deploy this app directly from the repo.
 
 - `ADMIN_PASSWORD`: password for the `/admin` page
 - `SECRET_KEY`: long random string for Flask session security
-- `DB_PATH`: path to the SQLite file on a persistent Render disk, for example `/var/data/predictions.db`
+- `DB_DIR`: directory holding the SQLite file on a persistent Render disk, for example `/var/data` (the app stores `predictions.db` inside it)
 
 ### Important storage note
 
@@ -66,7 +66,7 @@ SQLite only works on Render if you attach a persistent disk. If you do not mount
 Recommended Render disk mount path:
 
 - Mount path: `/var/data`
-- `DB_PATH=/var/data/predictions.db`
+- `DB_DIR=/var/data`
 
 ### Render setup steps
 
@@ -88,7 +88,7 @@ If you use the included `render.yaml`, Render can prefill the service settings, 
 
 ## Notes
 
-- Data is stored in `data/predictions.db`.
+- Data is stored in `predictions.db` inside `DB_DIR` (defaults to `data/predictions.db` locally).
 - Saving picks for the same email updates that player's latest prediction and score.
 - Current score is based on completed picks (group + knockout picks), same as your original app logic.
 - Admin access is available at `/admin`. Set `ADMIN_PASSWORD` before starting the app so only you can view all submissions.
