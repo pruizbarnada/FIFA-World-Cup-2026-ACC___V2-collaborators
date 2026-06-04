@@ -14,7 +14,12 @@
   <div class="hero">
     <div class="hero-inner">
       <div class="hero-title">
-        <img src="{{ url_for('static', filename='main-logo.png') }}" alt="World Cup 2026 Prediction Challenge" class="hero-logo">
+        <img
+          src="{{ url_for('static', filename='logo-world-cup26BCG_3.png') }}"
+          onerror="this.onerror=null; this.src='{{ url_for('static', filename='wc2026-logo.png') }}';"
+          alt="World Cup 2026 Prediction Challenge"
+          class="hero-logo"
+        >
       </div>
       <div class="hero-sub">Prediction Challenge</div>
       <div class="hero-badge">USA · Canada · Mexico</div>

@@ -15,3 +15,7 @@ allowed_emails.txt
 .vscode/
 .idea/
 *.swp
+
+# Local server logs
+flask-*.log
+*.err.log
