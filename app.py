@@ -1090,6 +1090,15 @@ def save_picks():
         picks["groups"] = stored_groups
         picks["thirds_ranking"] = stored_thirds
 
+    # Pre-tournament predictions (podium / pichichi / champion) are locked: always
+    # keep whatever was previously stored and ignore any incoming changes.
+    picks["podium"] = stored.get("podium") if isinstance(stored.get("podium"), dict) else {}
+    picks["pichichi"] = stored.get("pichichi") if isinstance(stored.get("pichichi"), str) else ""
+    if isinstance(stored.get("champion"), str):
+        picks["champion"] = stored["champion"]
+    else:
+        picks.pop("champion", None)
+
     # Per-match KO lock: once a knockout match is within 30 minutes of kickoff,
     # ignore any incoming changes for that slot and keep whatever was last stored.
     incoming_ko = picks.get("ko") if isinstance(picks.get("ko"), dict) else {}

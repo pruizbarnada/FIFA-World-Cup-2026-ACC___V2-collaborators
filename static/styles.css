@@ -1156,6 +1156,12 @@ body.picks-locked #wizardContent .third-item {
 }
 .podium-flag img.emoji { height: 22px; width: 22px; }
 
+/* Pre-tournament predictions are locked: dim and block all interaction. */
+.podium-picker.locked {
+  opacity: .6;
+  pointer-events: none;
+}
+
 .podium-dropdown { position: relative; width: 100%; }
 .podium-dropdown-toggle {
   width: 100%;

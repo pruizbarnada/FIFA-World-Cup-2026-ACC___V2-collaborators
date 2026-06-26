@@ -220,6 +220,10 @@ function isPicksLocked() {
   return d ? Date.now() >= d.getTime() : false;
 }
 
+// Pre-tournament predictions (podium + pichichi) are permanently locked and
+// can no longer be changed, independent of the global pick-lock countdown.
+const PRETOURNAMENT_LOCKED = true;
+
 function buildLockBannerHTML() {
   const d = picksLockTime();
   if (!d) return '';
@@ -425,6 +429,7 @@ function renderGroups() {
 function renderPodiumPicker() {
   const container = qs('podiumPicker');
   if (!container) return;
+  container.classList.toggle('locked', PRETOURNAMENT_LOCKED);
   if (!picks.podium) picks.podium = { first:null, second:null, third:null, fourth:null };
 
   const sortedTeams = allTeams().slice().sort();
@@ -520,6 +525,7 @@ function renderPichichiPicker() {
   if (!container) return;
 
   const sortedTeams = allTeams().slice().sort();
+  container.classList.toggle('locked', PRETOURNAMENT_LOCKED);
   const currentTeam = picks.pichichi;
 
   container.innerHTML = '';
