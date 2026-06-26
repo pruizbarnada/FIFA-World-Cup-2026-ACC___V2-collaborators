@@ -1011,6 +1011,7 @@ function pickKOWinner(round, matchIdx, side) {
 
   if (currentMode === 'manual') renderKO();
   if (currentMode === 'simple') renderWizard();
+  autoSaveKO();
 }
 
 function invalidateDownstream(round, matchIdx) {
@@ -1045,6 +1046,7 @@ function setKOScore(round, matchIdx, scoreType, value) {
     return;
   }
   picks.ko[round][matchIdx][scoreType === 'home' ? 'homeScore' : 'awayScore'] = val;
+  autoSaveKO();
 }
 
 // ── Wizard (Easy mode) ────────────────────────────────────────────────────────
@@ -1497,6 +1499,38 @@ async function savePicks() {
     renderKO();
   } else if (currentMode === 'simple') {
     renderWizard();
+  }
+}
+
+// Auto-save for the Knockout section: persists the current picks as soon as the
+// user picks a winner or enters a score, so they never need to click "Save picks".
+// Lightweight on purpose - it posts the picks and shows a subtle confirmation
+// without the full re-render/results refresh that savePicks() performs.
+let koAutoSaveInFlight = false;
+let koAutoSavePending = false;
+async function autoSaveKO() {
+  if (!playerEmail) return;
+  // Coalesce rapid changes: if a save is already running, mark that another is needed.
+  if (koAutoSaveInFlight) { koAutoSavePending = true; return; }
+  koAutoSaveInFlight = true;
+  normalizePicks();
+  try {
+    const res  = await fetch('/api/save', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ email: playerEmail, name: playerName, picks }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      showMessage(data.error || 'Auto-save failed', true);
+    } else {
+      showMessage('Saved automatically');
+    }
+  } catch {
+    showMessage('Auto-save failed - check your connection', true);
+  } finally {
+    koAutoSaveInFlight = false;
+    if (koAutoSavePending) { koAutoSavePending = false; autoSaveKO(); }
   }
 }
 
