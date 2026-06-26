@@ -296,6 +296,23 @@ body {
 }
 .lock-banner-icon { font-size: 16px; line-height: 1; }
 
+/* ── Knockout provisional-fixtures notice ── */
+.ko-notice-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin-bottom: 14px;
+  background: #fff8e1;
+  border: 1px solid #f0c842;
+  color: #7a5c00;
+  font-weight: 600;
+}
+.ko-notice-icon { font-size: 16px; line-height: 1; }
+
 /* When locked, dim the inputs in the Groups and 3rd-place panes */
 body.picks-locked #pane-groups .groups-grid,
 body.picks-locked #pane-thirds #thirdsContainer,
