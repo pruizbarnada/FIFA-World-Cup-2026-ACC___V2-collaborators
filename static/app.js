@@ -121,20 +121,18 @@ const KO_KICKOFFS = {
     '2026-07-19T19:00:00Z', // M104 — W M101 vs W M102
   ],
 };
-const UNLOCK_HOURS_BEFORE = 72;
-const LOCK_MINUTES_BEFORE = 30;
-const KO_PHASE_UNLOCK_AT = new Date(
-  Math.min(...Object.values(KO_KICKOFFS).flat().map(iso => new Date(iso).getTime()))
-    - UNLOCK_HOURS_BEFORE * 3600 * 1000
-);
+// All knockout picks lock together at this fixed deadline:
+// 18:45 Madrid / CEST on 29 June 2026 (16:45 UTC). The bracket is open
+// for picking from now until this moment.
+const KO_LOCK_AT = new Date('2026-06-29T18:45:00+02:00');
 
 function koUnlockAt(round, idx) {
-  return KO_PHASE_UNLOCK_AT;
+  // Knockout bracket is open immediately - there is no pre-unlock window.
+  return new Date(0);
 }
 function koLockAt(round, idx) {
-  const kickoffs = KO_KICKOFFS[round];
-  if (!kickoffs || idx < 0 || idx >= kickoffs.length) return new Date(8.64e15);
-  return new Date(new Date(kickoffs[idx]).getTime() - LOCK_MINUTES_BEFORE * 60 * 1000);
+  // Every match locks at the single shared deadline.
+  return KO_LOCK_AT;
 }
 function koIsUnlocked(round, idx) {
   return Date.now() >= koUnlockAt(round, idx).getTime();
