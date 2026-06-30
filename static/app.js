@@ -809,7 +809,19 @@ function resolveKOWinner(round, matchIdx) {
   const actual = actualResults && actualResults.ko && actualResults.ko[round]
     && actualResults.ko[round][matchIdx] && actualResults.ko[round][matchIdx].winner;
   if (actual) return actual;
-  return ((picks.ko[round]||{})[matchIdx]||{}).winner || null;
+  return koPickedWinner(round, matchIdx);
+}
+
+// The user's winner for a match: the team they clicked, or - when only a
+// score was entered - the higher-scoring side (a tie/incomplete picks nobody).
+function koPickedWinner(round, matchIdx) {
+  const m = (picks.ko[round] || {})[matchIdx] || {};
+  if (m.winner) return m.winner;
+  const hs = m.homeScore, as = m.awayScore;
+  if (typeof hs === 'number' && typeof as === 'number' && hs !== as) {
+    return getTeam(round, matchIdx, hs > as ? 'home' : 'away');
+  }
+  return null;
 }
 
 function resolveKOMatchTeam(round, matchIdx, side) {
@@ -894,7 +906,7 @@ function buildKoMatchCard(roundId, matchIdx) {
   const awayLabel  = awayTeam || getPlaceholder(roundId, matchIdx, 'away');
   const homeFlag   = homeTeam ? (FLAG[homeTeam]||'🏳️') : '🏳️';
   const awayFlag   = awayTeam ? (FLAG[awayTeam]||'🏳️') : '🏳️';
-  const winner     = matchPick.winner || null;
+  const winner     = koPickedWinner(roundId, matchIdx);
   const homeScore  = matchPick.homeScore ?? '';
   const awayScore  = matchPick.awayScore ?? '';
   const homePicked = winner && winner === homeTeam;
@@ -1045,7 +1057,11 @@ function setKOScore(round, matchIdx, scoreType, value) {
     if (currentMode === 'simple') renderWizard();
     return;
   }
+  const prevWinner = koPickedWinner(round, matchIdx);
   picks.ko[round][matchIdx][scoreType === 'home' ? 'homeScore' : 'awayScore'] = val;
+  if (koPickedWinner(round, matchIdx) !== prevWinner) invalidateDownstream(round, matchIdx);
+  if (currentMode === 'manual') renderKO();
+  if (currentMode === 'simple') renderWizard();
   autoSaveKO();
 }
 
@@ -1213,7 +1229,7 @@ function renderWizardKoRound(body, roundId) {
   const unlocked = koIsUnlocked(roundId, idx);
   const closed = koIsClosed(roundId, idx);
   const pickable = unlocked && !closed;
-  const matchPicked = ((picks.ko[roundId] || {})[idx] || {}).winner;
+  const matchPicked = koPickedWinner(roundId, idx);
 
   let statusHtml;
   if (!unlocked) {
@@ -1265,7 +1281,7 @@ function renderWizardKoRound(body, roundId) {
   let pickedCount = 0;
   for (let i = 0; i < total; i++) {
     if (koIsPickable(roundId, i)) openCount += 1;
-    if (((picks.ko[roundId] || {})[i] || {}).winner) pickedCount += 1;
+    if (koPickedWinner(roundId, i)) pickedCount += 1;
   }
   const summary = document.createElement('div');
   summary.className = 'wizard-r32-summary';

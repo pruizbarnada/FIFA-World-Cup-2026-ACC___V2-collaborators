@@ -451,6 +451,23 @@ def _score_thirds(user: Any, actual: Any) -> int:
     return score
 
 
+def _infer_ko_winner(pick: Any, actual_entry: Any) -> str | None:
+    """Winner implied by the entered score, using the actual match teams.
+
+    When a respondent gave a score but did not pick a team, the higher-scoring
+    side wins. A tie, an incomplete/invalid score, or missing actual teams
+    yields None. The actual results provide the team names, so individual
+    bracket predictions are not used here.
+    """
+    if not isinstance(pick, dict) or not isinstance(actual_entry, dict):
+        return None
+    hs, as_ = pick.get("homeScore"), pick.get("awayScore")
+    if not (is_valid_match_score(hs) and is_valid_match_score(as_)) or hs == as_:
+        return None
+    team = actual_entry.get("homeTeam") if hs > as_ else actual_entry.get("awayTeam")
+    return team if isinstance(team, str) and team else None
+
+
 def _score_ko(user: Any, actual: Any) -> int:
     if not isinstance(user, dict) or not isinstance(actual, dict):
         return 0
@@ -479,11 +496,15 @@ def _score_ko(user: Any, actual: Any) -> int:
         pts = ROUND_POINTS[round_id]
         bonus = SCORE_BONUS[round_id]
 
-        for pick in user_round.values():
+        for key, pick in user_round.items():
             if not isinstance(pick, dict):
                 continue
             picked = pick.get("winner")
-            if not isinstance(picked, str) or not picked:
+            if not (isinstance(picked, str) and picked):
+                # No team selected: infer the winner from the entered score
+                # using the actual match teams (higher score wins; tie = none).
+                picked = _infer_ko_winner(pick, actual_round.get(key))
+            if not (isinstance(picked, str) and picked):
                 continue
             if picked not in actual_winners:
                 continue
@@ -951,6 +972,9 @@ def _build_submissions_csv() -> str:
     writer = csv.writer(buf)
     writer.writerow(header)
 
+    results = get_results()
+    actual_ko = results.get("ko") if isinstance(results.get("ko"), dict) else {}
+
     for row in rows:
         try:
             picks = json.loads(row["picks_json"])
@@ -980,11 +1004,16 @@ def _build_submissions_csv() -> str:
         ko = picks.get("ko") if isinstance(picks.get("ko"), dict) else {}
         for round_id, count in KO_EXPORT_COUNTS:
             round_data = ko.get(round_id) if isinstance(ko.get(round_id), dict) else {}
+            actual_round = actual_ko.get(round_id) if isinstance(actual_ko.get(round_id), dict) else {}
             for i in range(count):
                 match = round_data.get(str(i))
                 if not isinstance(match, dict):
                     match = round_data.get(i) if isinstance(round_data.get(i), dict) else {}
-                out.append(match.get("winner") or "")
+                winner = match.get("winner")
+                if not (isinstance(winner, str) and winner):
+                    actual_entry = actual_round.get(str(i)) or actual_round.get(i)
+                    winner = _infer_ko_winner(match, actual_entry)
+                out.append(winner or "")
                 hs = match.get("homeScore")
                 aw = match.get("awayScore")
                 if is_valid_match_score(hs) and is_valid_match_score(aw):
