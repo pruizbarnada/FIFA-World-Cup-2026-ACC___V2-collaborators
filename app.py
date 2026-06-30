@@ -89,6 +89,9 @@ KO_KICKOFFS: dict[str, tuple[str, ...]] = {
 
 # Picks for a knockout match lock this many minutes before kickoff.
 KO_LOCK_MINUTES_BEFORE = 30
+# In addition, all knockout picks lock no later than this ceiling:
+# 19:20 Madrid / CEST on 30 June 2026 (17:20 UTC).
+KO_LOCK_CEILING_AT = os.getenv("KO_LOCK_CEILING_AT", "2026-06-30T19:20:00+02:00").strip()
 
 RESULTS_KEY = "wc2026_results"
 
@@ -224,13 +227,31 @@ def ko_match_kickoff(round_id: str, match_idx: int) -> datetime | None:
     return dt
 
 
+def ko_lock_ceiling_dt() -> datetime | None:
+    try:
+        dt = datetime.fromisoformat(KO_LOCK_CEILING_AT)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def ko_match_is_closed(round_id: str, match_idx: int, now: datetime | None = None) -> bool:
-    """True when picks for this match are no longer accepted (within 30 min of kickoff)."""
+    """True when picks for this match are no longer accepted.
+
+    Picks lock 30 minutes before kickoff, but never later than the global
+    ceiling (KO_LOCK_CEILING_AT), whichever comes first.
+    """
+    now = now or datetime.now(timezone.utc)
+    ceiling = ko_lock_ceiling_dt()
+    if ceiling is not None and now >= ceiling:
+        return True
     kickoff = ko_match_kickoff(round_id, match_idx)
     if kickoff is None:
         return False
     lock_at = kickoff - timedelta(minutes=KO_LOCK_MINUTES_BEFORE)
-    return (now or datetime.now(timezone.utc)) >= lock_at
+    return now >= lock_at
 
 
 def is_email_allowed(email: str) -> bool:

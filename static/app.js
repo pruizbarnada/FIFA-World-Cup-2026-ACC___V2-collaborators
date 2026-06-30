@@ -123,6 +123,9 @@ const KO_KICKOFFS = {
 };
 const UNLOCK_HOURS_BEFORE = 72;
 const LOCK_MINUTES_BEFORE = 30;
+// All knockout picks lock no later than this ceiling: 19:20 Madrid / CEST on
+// 30 June 2026 (17:20 UTC). The per-match 30-min lock still applies if earlier.
+const KO_LOCK_CEILING = new Date('2026-06-30T19:20:00+02:00');
 const KO_PHASE_UNLOCK_AT = new Date(
   Math.min(...Object.values(KO_KICKOFFS).flat().map(iso => new Date(iso).getTime()))
     - UNLOCK_HOURS_BEFORE * 3600 * 1000
@@ -133,8 +136,10 @@ function koUnlockAt(round, idx) {
 }
 function koLockAt(round, idx) {
   const kickoffs = KO_KICKOFFS[round];
-  if (!kickoffs || idx < 0 || idx >= kickoffs.length) return new Date(8.64e15);
-  return new Date(new Date(kickoffs[idx]).getTime() - LOCK_MINUTES_BEFORE * 60 * 1000);
+  const perMatch = (kickoffs && idx >= 0 && idx < kickoffs.length)
+    ? new Date(new Date(kickoffs[idx]).getTime() - LOCK_MINUTES_BEFORE * 60 * 1000)
+    : new Date(8.64e15);
+  return perMatch.getTime() < KO_LOCK_CEILING.getTime() ? perMatch : KO_LOCK_CEILING;
 }
 function koIsUnlocked(round, idx) {
   return Date.now() >= koUnlockAt(round, idx).getTime();
