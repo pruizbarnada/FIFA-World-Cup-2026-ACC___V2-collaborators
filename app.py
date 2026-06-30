@@ -87,9 +87,8 @@ KO_KICKOFFS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-# All knockout picks lock together at this fixed deadline (18:45 Madrid / CEST
-# on 29 June 2026 = 16:45 UTC), replacing the old per-match 30-min-before rule.
-KO_LOCK_AT = os.getenv("KO_LOCK_AT", "2026-06-29T18:45:00+02:00").strip()
+# Picks for a knockout match lock this many minutes before kickoff.
+KO_LOCK_MINUTES_BEFORE = 30
 
 RESULTS_KEY = "wc2026_results"
 
@@ -225,21 +224,12 @@ def ko_match_kickoff(round_id: str, match_idx: int) -> datetime | None:
     return dt
 
 
-def ko_lock_dt() -> datetime | None:
-    try:
-        dt = datetime.fromisoformat(KO_LOCK_AT)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
-
-
 def ko_match_is_closed(round_id: str, match_idx: int, now: datetime | None = None) -> bool:
-    """True once knockout picks are locked. All matches lock together at KO_LOCK_AT."""
-    lock_at = ko_lock_dt()
-    if lock_at is None:
+    """True when picks for this match are no longer accepted (within 30 min of kickoff)."""
+    kickoff = ko_match_kickoff(round_id, match_idx)
+    if kickoff is None:
         return False
+    lock_at = kickoff - timedelta(minutes=KO_LOCK_MINUTES_BEFORE)
     return (now or datetime.now(timezone.utc)) >= lock_at
 
 
